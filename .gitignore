@@ -1,0 +1,33 @@
+# 操作系统 / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Go（注意：不忽略 vendor/，离线交付可能依赖 vendor 目录）
+/bin/
+*.test
+*.out
+coverage.out
+coverage.html
+
+# 前端 / Node
+node_modules/
+dist/
+.vite/
+*.log
+
+# 本地环境与密钥（禁止提交）
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 临时产物
+tmp/
+*.tmp
+
+# AI Agent 上下文目录（与合同/项目/结算/CRM/数析各仓一致：.ai 不随业务代码提交）
+.ai
