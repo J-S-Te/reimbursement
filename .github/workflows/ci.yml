@@ -1,0 +1,144 @@
+name: reimbursement
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: reimbursement-${{ github.event_name == 'pull_request' && github.ref || 'test' }}
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: reimbursement-ci-only
+          MYSQL_DATABASE: exp_reimbursement_test_ci
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify deployment prerequisites
+        run: python3 scripts/test_ci_deployment.py
+      - name: Verify shared core
+        run: sh scripts/license-core-sync.sh --check
+      - name: Format and static checks
+        run: |
+          test -z "$(gofmt -l cmd internal authz migrations)"
+          go vet ./...
+      - name: Unit and component tests
+        run: go test -race ./...
+      - name: Isolated MySQL financial invariants
+        env:
+          REIMBURSEMENT_TEST_DSN: root:reimbursement-ci-only@tcp(127.0.0.1:${{ job.services.mysql.ports[3306] }})/exp_reimbursement_test_ci?parseTime=true&loc=UTC
+        run: go test ./internal/infrastructure/mysql -run TestReimbursementMySQL -count=1 -v
+      - name: Build independent processes
+        run: go build ./cmd/...
+
+  image:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: backend
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.result.outputs.image_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        name: Validate image destination
+        shell: bash
+        env:
+          ACR_PUSH_REGISTRY: ${{ vars.ACR_PUSH_REGISTRY }}
+          ACR_PULL_REGISTRY: ${{ vars.ACR_PULL_REGISTRY }}
+          ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+          ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY }}
+        run: |
+          set -Eeuo pipefail
+          : "${ACR_PUSH_REGISTRY:?missing ACR_PUSH_REGISTRY}"
+          : "${ACR_PULL_REGISTRY:?missing ACR_PULL_REGISTRY}"
+          : "${ACR_NAMESPACE:?missing ACR_NAMESPACE}"
+          : "${ACR_REPOSITORY:?missing ACR_REPOSITORY}"
+          [[ "$ACR_PUSH_REGISTRY" =~ ^[a-z0-9.-]+$ ]]
+          [[ "$ACR_PULL_REGISTRY" =~ ^[a-z0-9.-]+$ ]]
+          [[ "$ACR_NAMESPACE" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
+          [[ "$ACR_REPOSITORY" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
+          echo "image=${ACR_PUSH_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}" >> "$GITHUB_OUTPUT"
+          echo "deploy_image=${ACR_PULL_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ACR_PUSH_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.vars.outputs.image }}:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+      - id: result
+        name: Export immutable pull reference
+        shell: bash
+        env:
+          DEPLOY_IMAGE: ${{ steps.vars.outputs.deploy_image }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "image_ref=${DEPLOY_IMAGE}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: image
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy immutable reimbursement image
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          IMAGE_REF: ${{ needs.image.outputs.image_ref }}
+        run: |
+          set -Eeuo pipefail
+          : "${DEPLOY_HOST:?missing DEPLOY_HOST}"
+          : "${DEPLOY_USER:?missing DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?missing DEPLOY_SSH_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?missing DEPLOY_KNOWN_HOSTS}"
+          : "${DEPLOY_PATH:?missing DEPLOY_PATH}"
+          : "${IMAGE_REF:?missing immutable IMAGE_REF}"
+          DEPLOY_PORT="${DEPLOY_PORT:-22}"
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+          umask 077
+          ssh_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          chmod 700 "$ssh_dir"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/id_ed25519" "$ssh_dir/known_hosts"
+          printf -v remote_command 'bash -s -- %q %q' "$DEPLOY_PATH" "$IMAGE_REF"
+          ssh -i "$ssh_dir/id_ed25519" -p "$DEPLOY_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$remote_command" < scripts/deploy-reimbursement-remote.sh

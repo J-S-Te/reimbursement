@@ -1,0 +1,413 @@
+{
+  "catalog_version": "4",
+  "claims_role_config_hash": "reimbursement-v4-controlled-recovery",
+  "policy": {
+    "max_effective_roles": 16
+  },
+  "permissions": [
+    {
+      "code": "expense.claim.read",
+      "name": "查看报销单",
+      "action": "read",
+      "resource_code": "expense.claim",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.claim.create",
+      "name": "维护本人草稿",
+      "action": "create",
+      "resource_code": "expense.claim",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.claim.submit",
+      "name": "提交报销",
+      "action": "submit",
+      "resource_code": "expense.claim",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.claim.withdraw",
+      "name": "撤回本人报销",
+      "action": "withdraw",
+      "resource_code": "expense.claim",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.claim.void",
+      "name": "作废本人报销",
+      "action": "void",
+      "resource_code": "expense.claim",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.invoice.read",
+      "name": "查看发票",
+      "action": "read",
+      "resource_code": "expense.invoice",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.invoice.upload",
+      "name": "上传维护发票",
+      "action": "upload",
+      "resource_code": "expense.invoice",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.invoice.review",
+      "name": "人工复核发票",
+      "action": "review",
+      "resource_code": "expense.invoice",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.approval.act",
+      "name": "办理审批任务",
+      "action": "act",
+      "resource_code": "expense.approval",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.approval.transfer",
+      "name": "受控转交审批",
+      "action": "transfer",
+      "resource_code": "expense.approval",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.finance.review",
+      "name": "会计审核",
+      "action": "review",
+      "resource_code": "expense.finance",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.payment.record",
+      "name": "登记付款",
+      "action": "record",
+      "resource_code": "expense.payment",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.payment.reversal.request",
+      "name": "申请全额冲正",
+      "action": "request",
+      "resource_code": "expense.payment.reversal",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.payment.reversal.approve",
+      "name": "独立批准冲正",
+      "action": "approve",
+      "resource_code": "expense.payment.reversal",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.archive.read",
+      "name": "查看档案",
+      "action": "read",
+      "resource_code": "expense.archive",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.archive.retry",
+      "name": "重试归档",
+      "action": "retry",
+      "resource_code": "expense.archive",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.archive.export",
+      "name": "创建导出",
+      "action": "export",
+      "resource_code": "expense.export",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.config.manage",
+      "name": "管理报销配置",
+      "action": "manage",
+      "resource_code": "expense.config",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.project.reference",
+      "name": "查询可关联项目",
+      "action": "reference",
+      "resource_code": "expense.project",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.audit.read",
+      "name": "查看审计账本",
+      "action": "read",
+      "resource_code": "expense.audit",
+      "resource_name": "报销",
+      "risk_level": "MEDIUM"
+    },
+    {
+      "code": "expense.claim.update",
+      "name": "更新本人草稿",
+      "action": "update",
+      "resource_code": "expense.claim",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.invoice.verify",
+      "name": "记录票据人工核验",
+      "action": "verify",
+      "resource_code": "expense.invoice",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.invoice.correct",
+      "name": "独立批准票据重大更正",
+      "action": "correct",
+      "resource_code": "expense.invoice",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.payment.read",
+      "name": "查看付款账本",
+      "action": "read",
+      "resource_code": "expense.payment",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.policy.publish",
+      "name": "发布版本化业务政策",
+      "action": "publish",
+      "resource_code": "expense.policy",
+      "resource_name": "报销",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.claim.reopen",
+      "name": "重开待付款义务并要求重新确认",
+      "action": "reopen",
+      "resource_code": "expense.claim",
+      "resource_name": "报销财务受控处理",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.claim.approved_void",
+      "name": "独立批准作废未付义务",
+      "action": "approved_void",
+      "resource_code": "expense.claim",
+      "resource_name": "报销财务受控处理",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.payment.exception.record",
+      "name": "记录外部付款异常事实",
+      "action": "record",
+      "resource_code": "expense.payment.exception",
+      "resource_name": "报销财务受控处理",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.payment.exception.review",
+      "name": "独立核实外部付款异常",
+      "action": "review",
+      "resource_code": "expense.payment.exception",
+      "resource_name": "报销财务受控处理",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.scope.tenant_all",
+      "name": "本租户全量业务范围",
+      "action": "tenant_all",
+      "resource_code": "expense.scope",
+      "resource_name": "业务范围",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.approval.recover",
+      "name": "接管失效审批待办",
+      "action": "recover",
+      "resource_code": "expense.approval",
+      "resource_name": "异常恢复",
+      "risk_level": "HIGH"
+    },
+    {
+      "code": "expense.integration.manage",
+      "name": "对账及恢复失败投递",
+      "action": "manage",
+      "resource_code": "expense.integration",
+      "resource_name": "异常恢复",
+      "risk_level": "HIGH"
+    }
+  ],
+  "roles": [
+    {
+      "code": "reimbursement_admin",
+      "name": "超级管理员",
+      "description": "本租户全动作与明确全量范围，仍受独立审批、付款和任务受理约束。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.claim.create",
+        "expense.claim.submit",
+        "expense.claim.withdraw",
+        "expense.claim.void",
+        "expense.invoice.read",
+        "expense.invoice.upload",
+        "expense.invoice.review",
+        "expense.approval.act",
+        "expense.approval.transfer",
+        "expense.finance.review",
+        "expense.payment.record",
+        "expense.payment.reversal.request",
+        "expense.payment.reversal.approve",
+        "expense.archive.read",
+        "expense.archive.retry",
+        "expense.archive.export",
+        "expense.config.manage",
+        "expense.project.reference",
+        "expense.audit.read",
+        "expense.claim.update",
+        "expense.invoice.verify",
+        "expense.invoice.correct",
+        "expense.payment.read",
+        "expense.policy.publish",
+        "expense.claim.reopen",
+        "expense.claim.approved_void",
+        "expense.payment.exception.record",
+        "expense.payment.exception.review",
+        "expense.scope.tenant_all",
+        "expense.approval.recover",
+        "expense.integration.manage"
+      ]
+    },
+    {
+      "code": "expense_applicant",
+      "name": "报销申请人",
+      "description": "动作权限与本地对象范围分别校验；管理员不隐式获得财务范围或自审自付权。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.claim.create",
+        "expense.claim.submit",
+        "expense.claim.withdraw",
+        "expense.claim.void",
+        "expense.invoice.read",
+        "expense.invoice.upload",
+        "expense.invoice.review",
+        "expense.project.reference",
+        "expense.claim.update",
+        "expense.archive.read"
+      ]
+    },
+    {
+      "code": "expense_approver",
+      "name": "业务审批人",
+      "description": "动作权限与本地对象范围分别校验；管理员不隐式获得财务范围或自审自付权。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.approval.act"
+      ]
+    },
+    {
+      "code": "expense_accountant",
+      "name": "会计",
+      "description": "动作权限与本地对象范围分别校验；管理员不隐式获得财务范围或自审自付权。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.invoice.read",
+        "expense.finance.review",
+        "expense.approval.act",
+        "expense.archive.read",
+        "expense.invoice.verify",
+        "expense.invoice.correct",
+        "expense.payment.read",
+        "expense.payment.exception.record"
+      ]
+    },
+    {
+      "code": "expense_cashier",
+      "name": "出纳",
+      "description": "动作权限与本地对象范围分别校验；管理员不隐式获得财务范围或自审自付权。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.invoice.read",
+        "expense.payment.record",
+        "expense.payment.reversal.request",
+        "expense.archive.read",
+        "expense.payment.read",
+        "expense.payment.exception.record"
+      ]
+    },
+    {
+      "code": "expense_auditor",
+      "name": "审计员",
+      "description": "动作权限与本地对象范围分别校验；管理员不隐式获得财务范围或自审自付权。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.invoice.read",
+        "expense.archive.read",
+        "expense.audit.read",
+        "expense.archive.export",
+        "expense.payment.read"
+      ]
+    },
+    {
+      "code": "expense_archive_operator",
+      "name": "档案管理员",
+      "description": "动作权限与本地对象范围分别校验；管理员不隐式获得财务范围或自审自付权。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.archive.read",
+        "expense.archive.retry",
+        "expense.archive.export"
+      ]
+    },
+    {
+      "code": "expense_finance_director",
+      "name": "财务负责人",
+      "description": "独立批准冲正和发布政策，数据范围仍必须本地明确授权。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.payment.read",
+        "expense.archive.read",
+        "expense.payment.reversal.approve",
+        "expense.policy.publish",
+        "expense.claim.reopen",
+        "expense.claim.approved_void",
+        "expense.payment.exception.review",
+        "expense.approval.act"
+      ]
+    },
+    {
+      "code": "expense_approval_coordinator",
+      "name": "受控审批转交协调人",
+      "description": "仅当前本人任务可转交；目标须目录当前能力与本地有效替代映射同时满足，不授予财务范围。",
+      "permissions": [
+        "expense.claim.read",
+        "expense.approval.act",
+        "expense.approval.transfer"
+      ]
+    }
+  ]
+}

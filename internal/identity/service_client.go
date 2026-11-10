@@ -1,0 +1,276 @@
+package identity
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/j-s-te/reimbursement/authz"
+	"github.com/oklog/ulid/v2"
+)
+
+type AuditEvent struct {
+	// ActorType 区分 USER / MACHINE / SYSTEM；为空按 USER 上报。
+	ActorType                                            string
+	ActorID, ActorName, Action, ResourceType, ResourceID string
+	RequestID, CorrelationID, Result, ReasonCode         string
+	// RiskLevel 为 LOW/MEDIUM/HIGH/CRITICAL；为空时按 LOW 上报。
+	RiskLevel string
+	// 统一审计来源协议（AUD-IP-2026）：LoginIP 固定于会话，ClientIP 是本次操作地址，
+	// IPSource 标记获取方式；三者分开上报，互不顶替。
+	LoginIP, ClientIP, IPSource string
+	// UserLoginIP 是旧协议字段，继续按"登录地址"语义上报以兼容滚动升级。
+	UserLoginIP string
+}
+type AuditReporter interface {
+	Report(context.Context, AuditEvent) error
+}
+
+type serviceClient struct {
+	baseURL, clientID, clientSecret string
+	client                          *http.Client
+	mu                              sync.Mutex
+	tokens                          map[string]cachedToken
+}
+type cachedToken struct {
+	value     string
+	expiresAt time.Time
+}
+
+// newServiceClient 处理报销身份会话及受控协议边界。
+// 参数：baseURL为平台控制面地址；clientID为当前newServiceClient业务处理的受控输入；clientSecret为当前newServiceClient业务处理的受控输入。
+// 返回值：当前业务或协议处理结果。
+func newServiceClient(baseURL, clientID, clientSecret string) *serviceClient {
+	return &serviceClient{baseURL: strings.TrimRight(baseURL, "/"), clientID: clientID, clientSecret: clientSecret, client: &http.Client{Timeout: 8 * time.Second}, tokens: map[string]cachedToken{}}
+}
+
+// token 处理报销身份会话及受控协议边界。
+// 参数：ctx为调用取消与超时边界；scope为本用途要求的权限集合。
+// 返回值：处理结果及校验、存储或依赖失败错误。
+func (c *serviceClient) token(ctx context.Context, scope string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if token := c.tokens[scope]; token.value != "" && time.Until(token.expiresAt) > 30*time.Second {
+		return token.value, nil
+	}
+	form := url.Values{"grant_type": {"client_credentials"}, "scope": {scope}}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/oauth2/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	request.SetBasicAuth(c.clientID, c.clientSecret)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := c.client.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+		return "", fmt.Errorf("platform token returned %d", response.StatusCode)
+	}
+	var result struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+		Scope       string `json:"scope"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result); err != nil {
+		return "", err
+	}
+	if result.AccessToken == "" || !strings.EqualFold(result.TokenType, "bearer") || !containsScope(result.Scope, scope) || result.ExpiresIn <= 0 {
+		return "", fmt.Errorf("platform token missing %s scope", scope)
+	}
+	c.tokens[scope] = cachedToken{result.AccessToken, time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)}
+	return result.AccessToken, nil
+}
+
+type auditClient struct {
+	service                          *serviceClient
+	applicationCode, environmentCode string
+}
+
+// AuditReporterConfiguration 描述本进程是否可发送审计
+// 事件，不暴露任何凭据值。
+type AuditReporterConfiguration struct {
+	Enabled       bool
+	MissingFields []string
+}
+
+// CheckAuditReporterConfiguration 处理报销身份会话及受控协议边界。
+// 参数：baseURL为平台控制面地址；clientID为当前CheckAuditReporterConfiguration业务处理的受控输入；clientSecret为当前CheckAuditReporterConfiguration业务处理的受控输入；applicationCode为当前CheckAuditReporterConfiguration业务处理的受控输入；environmentCode为当前CheckAuditReporterConfiguration业务处理的受控输入。
+// 返回值：当前业务或协议处理结果。
+func CheckAuditReporterConfiguration(baseURL, clientID, clientSecret, applicationCode, environmentCode string) AuditReporterConfiguration {
+	values := []struct {
+		name  string
+		value string
+	}{
+		{"PLATFORM_BASE_URL", baseURL},
+		{"PLATFORM_AUDIT_CLIENT_ID", clientID},
+		{"PLATFORM_AUDIT_CLIENT_SECRET", clientSecret},
+		{"PLATFORM_APPLICATION_CODE", applicationCode},
+		{"PLATFORM_ENVIRONMENT_CODE", environmentCode},
+	}
+	status := AuditReporterConfiguration{Enabled: true}
+	for _, item := range values {
+		if strings.TrimSpace(item.value) == "" {
+			status.Enabled = false
+			status.MissingFields = append(status.MissingFields, item.name)
+		}
+	}
+	return status
+}
+
+// NewAuditReporter 处理报销身份会话及受控协议边界。
+// 参数：baseURL为平台控制面地址；clientID为当前NewAuditReporter业务处理的受控输入；clientSecret为当前NewAuditReporter业务处理的受控输入；applicationCode为当前NewAuditReporter业务处理的受控输入；environmentCode为当前NewAuditReporter业务处理的受控输入。
+// 返回值：当前业务或协议处理结果。
+func NewAuditReporter(baseURL, clientID, clientSecret, applicationCode, environmentCode string) AuditReporter {
+	if !CheckAuditReporterConfiguration(baseURL, clientID, clientSecret, applicationCode, environmentCode).Enabled {
+		return nil
+	}
+	return &auditClient{newServiceClient(baseURL, clientID, clientSecret), applicationCode, environmentCode}
+}
+
+// Report 处理报销身份会话及受控协议边界。
+// 参数：ctx为调用取消与超时边界；event为已冻结的审计或通知事件。
+// 返回值：处理结果及校验、存储或依赖失败错误。
+func (c *auditClient) Report(ctx context.Context, event AuditEvent) error {
+	token, err := c.service.token(ctx, "audit.ingest")
+	if err != nil {
+		return err
+	}
+	trace := make([]byte, 16)
+	if _, err := rand.Read(trace); err != nil {
+		return err
+	}
+	parent := make([]byte, 8)
+	if _, err := rand.Read(parent); err != nil {
+		return err
+	}
+	requestID := strings.TrimSpace(event.RequestID)
+	if requestID == "" {
+		requestID = ulid.Make().String()
+	}
+	correlationID := strings.TrimSpace(event.CorrelationID)
+	if correlationID == "" {
+		correlationID = requestID
+	}
+	payload := map[string]any{"event_id": ulid.Make().String(), "occurred_at": time.Now().UTC().Format(time.RFC3339Nano), "application_code": c.applicationCode, "environment_code": c.environmentCode, "actor_type": actorTypeOrDefault(event.ActorType), "actor_id": event.ActorID, "actor_name": event.ActorName, "action": event.Action, "resource_type": event.ResourceType, "resource_id": event.ResourceID, "request_id": requestID, "trace_id": hex.EncodeToString(trace), "correlation_id": correlationID, "result": event.Result, "risk_level": riskLevelOrDefault(event.RiskLevel), "reason_code": event.ReasonCode}
+	loginIP := event.LoginIP
+	if loginIP == "" {
+		loginIP = event.UserLoginIP
+	}
+	if loginIP != "" {
+		payload["login_ip"] = loginIP
+		payload["user_login_ip"] = loginIP
+	}
+	if event.ClientIP != "" {
+		payload["client_ip"] = event.ClientIP
+	}
+	if event.IPSource != "" {
+		payload["ip_source"] = event.IPSource
+	}
+	body, _ := json.Marshal(payload)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.service.baseURL+"/api/v1/audit/events", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("X-Request-ID", requestID)
+	request.Header.Set("X-Correlation-ID", correlationID)
+	request.Header.Set("traceparent", "00-"+hex.EncodeToString(trace)+"-"+hex.EncodeToString(parent)+"-01")
+	response, err := c.service.client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+	if response.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("platform audit returned %d", response.StatusCode)
+	}
+	return nil
+}
+
+type CatalogSyncOptions struct {
+	Enabled                                        bool
+	BaseURL, ApplicationID, ClientID, ClientSecret string
+}
+
+// SyncAuthorizationCatalog 处理报销身份会话及受控协议边界。
+// 参数：ctx为调用取消与超时边界；options为本应用认证及会话运行策略。
+// 返回值：处理结果及校验、存储或依赖失败错误。
+func SyncAuthorizationCatalog(ctx context.Context, options CatalogSyncOptions) error {
+	if !options.Enabled {
+		return nil
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(authz.PermissionManifest, &manifest); err != nil {
+		return fmt.Errorf("decode permission manifest: %w", err)
+	}
+	client := newServiceClient(options.BaseURL, options.ClientID, options.ClientSecret)
+	token, err := client.token(ctx, "authorization.catalog.sync")
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, strings.TrimRight(options.BaseURL, "/")+"/api/v1/applications/"+url.PathEscape(options.ApplicationID)+"/authorization-catalog", bytes.NewReader(authz.PermissionManifest))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := client.client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("platform authorization catalog returned %d", response.StatusCode)
+	}
+	return nil
+}
+
+// containsScope 处理报销身份会话及受控协议边界。
+// 参数：value为待校验或持久化的协议业务值；wanted为当前containsScope业务处理的受控输入。
+// 返回值：当前业务或协议处理结果。
+func containsScope(value, wanted string) bool {
+	for _, item := range strings.Fields(value) {
+		if item == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+// actorTypeOrDefault 处理报销身份会话及受控协议边界。
+// 参数：value为待校验或持久化的协议业务值。
+// 返回值：当前业务或协议处理结果。
+func actorTypeOrDefault(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "USER", "MACHINE", "SYSTEM":
+		return strings.ToUpper(strings.TrimSpace(value))
+	}
+	return "USER"
+}
+
+// riskLevelOrDefault 处理报销身份会话及受控协议边界。
+// 参数：level为当前riskLevelOrDefault业务处理的受控输入。
+// 返回值：当前业务或协议处理结果。
+func riskLevelOrDefault(level string) string {
+	level = strings.ToUpper(strings.TrimSpace(level))
+	if level != "LOW" && level != "MEDIUM" && level != "HIGH" && level != "CRITICAL" {
+		return "LOW"
+	}
+	return level
+}

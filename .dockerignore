@@ -1,0 +1,15 @@
+.git
+.env*
+*.docx
+高保真原型.html
+流程图
+coverage*
+*.log
+
+# 本地协作记录、运行材料和临时产物不进入镜像构建上下文
+.ai
+.mimosa
+tmp
+bin
+*.pem
+*.key
