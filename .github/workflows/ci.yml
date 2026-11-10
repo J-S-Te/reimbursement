@@ -3,6 +3,15 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      phase:
+        description: 'deploy严格发布；prepare仅准备首次接入候选'
+        type: choice
+        required: true
+        default: deploy
+        options:
+          - deploy
+          - prepare
 permissions:
   contents: read
 concurrency:
@@ -30,7 +39,9 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Verify deployment prerequisites
-        run: python3 scripts/test_ci_deployment.py
+        run: |
+          python3 scripts/test_ci_deployment.py
+          python3 -B scripts/test_reimbursement_compose_admission.py
       - name: Verify shared core
         run: sh scripts/license-core-sync.sh --check
       - name: Format and static checks
@@ -120,6 +131,7 @@ jobs:
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           IMAGE_REF: ${{ needs.image.outputs.image_ref }}
+          DEPLOY_PHASE: ${{ github.event_name == 'workflow_dispatch' && inputs.phase || 'deploy' }}
         run: |
           set -Eeuo pipefail
           : "${DEPLOY_HOST:?missing DEPLOY_HOST}"
@@ -128,6 +140,8 @@ jobs:
           : "${DEPLOY_KNOWN_HOSTS:?missing DEPLOY_KNOWN_HOSTS}"
           : "${DEPLOY_PATH:?missing DEPLOY_PATH}"
           : "${IMAGE_REF:?missing immutable IMAGE_REF}"
+          DEPLOY_PHASE="${DEPLOY_PHASE-deploy}"
+          case "$DEPLOY_PHASE" in deploy|prepare) ;; *) exit 2 ;; esac
           DEPLOY_PORT="${DEPLOY_PORT:-22}"
           [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
           umask 077
@@ -137,8 +151,36 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/id_ed25519"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
           chmod 600 "$ssh_dir/id_ed25519" "$ssh_dir/known_hosts"
-          printf -v remote_command 'bash -s -- %q %q' "$DEPLOY_PATH" "$IMAGE_REF"
-          ssh -i "$ssh_dir/id_ed25519" -p "$DEPLOY_PORT" \
+          for helper in deploy-reimbursement-remote.sh reimbursement-compose-admission.py; do
+            [[ -f "scripts/$helper" && ! -L "scripts/$helper" ]]
+          done
+          bootstrap="$(cat <<'REMOTE'
+          set -Eeuo pipefail
+          [[ $# -eq 3 ]]
+          [[ "$3" == deploy || "$3" == prepare ]]
+          umask 077
+          task_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$task_dir"' EXIT
+          chmod 700 "$task_dir"
+          bundle="$task_dir/helpers.tar.gz"
+          head -c 524289 > "$bundle"
+          [[ "$(wc -c < "$bundle")" -le 524288 ]]
+          expected=$'deploy-reimbursement-remote.sh\nreimbursement-compose-admission.py'
+          [[ "$(tar -tzf "$bundle" | LC_ALL=C sort)" == "$expected" ]]
+          tar -tvzf "$bundle" | awk 'substr($1,1,1)!="-" {bad=1} END {exit bad}'
+          tar -xzf "$bundle" -C "$task_dir" --no-same-owner --no-same-permissions \
+            deploy-reimbursement-remote.sh reimbursement-compose-admission.py
+          for helper in deploy-reimbursement-remote.sh reimbursement-compose-admission.py; do
+            [[ -f "$task_dir/$helper" && ! -L "$task_dir/$helper" ]]
+            chmod 600 "$task_dir/$helper"
+          done
+          bash "$task_dir/deploy-reimbursement-remote.sh" "$1" "$2" "$3"
+          REMOTE
+          )"
+          printf -v remote_command 'bash -c %q -- %q %q %q' \
+            "$bootstrap" "$DEPLOY_PATH" "$IMAGE_REF" "$DEPLOY_PHASE"
+          tar -czf - -C scripts deploy-reimbursement-remote.sh reimbursement-compose-admission.py | \
+            ssh -i "$ssh_dir/id_ed25519" -p "$DEPLOY_PORT" \
             -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
-            "$DEPLOY_USER@$DEPLOY_HOST" "$remote_command" < scripts/deploy-reimbursement-remote.sh
+            "$DEPLOY_USER@$DEPLOY_HOST" "$remote_command"
