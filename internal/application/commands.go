@@ -22,6 +22,7 @@ type CommandInput struct {
 	ExpectedVersion int64  `json:"expected_version"`
 }
 type commandContext struct {
+	appointment       *draftAppointmentProof
 	finance           *financeRecheckProof
 	recovery          *approvalRecoveryProof
 	business          *businessActionProof

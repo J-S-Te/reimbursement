@@ -140,6 +140,13 @@ func (s *Service) recordPayment(tx *gorm.DB, cc *commandContext, payload json.Ra
 	if input.SourceAccountRef == "" || strings.TrimSpace(input.TransactionNo) == "" || len(input.TransactionNo) > 128 || len(input.SourceAccountRef) > 128 || len(input.VoucherFileIDs) == 0 || len(input.VoucherFileIDs) > 20 {
 		return nil, "", domain.Fail("PAYMENT_EVIDENCE_REQUIRED", "请填写来源账户、流水或现金凭证号及付款附件", 422)
 	}
+	// 与目录退休、替换串行，防止账户校验通过后被并发停用仍落入新付款。
+	if e = lockPolicyTenant(tx, c.TenantID); e != nil {
+		return nil, "", e
+	}
+	if e = validatePaymentSource(tx, c, input.SourceAccountRef); e != nil {
+		return nil, "", e
+	}
 	if e = validatePaymentProjectPolicies(tx, c, cc.refs); e != nil {
 		return nil, "", e
 	}

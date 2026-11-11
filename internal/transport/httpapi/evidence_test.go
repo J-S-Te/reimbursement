@@ -78,7 +78,7 @@ func TestClaimEvidenceHTTPAndPolicyHints(t *testing.T) {
 	}
 	files := &evidenceHTTPFiles{}
 	actor := domain.Actor{TenantID: "t", SubjectID: "app", Permissions: []string{"expense.claim.create", "expense.claim.update", "expense.claim.read", "expense.config.manage", "expense.policy.publish"}}
-	router := New(application.New(db, application.Dependencies{Files: files}), func(c *gin.Context) { c.Set("expense_actor", actor); c.Next() })
+	router := New(application.New(db, application.Dependencies{Files: files, Personnel: httpPersonnel{}}), func(c *gin.Context) { c.Set("expense_actor", actor); c.Next() })
 	created := evidenceHTTP(t, router, "POST", "/api/v1/configurations/historical_tail_policies", `{"command_id":"tail-draft","org_id":"org","project_id":"p1","expense_cutoff":"2026-11-10","valid_from":"2026-01-01"}`)
 	var config struct {
 		ID      string `json:"id"`

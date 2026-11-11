@@ -74,6 +74,10 @@ func (f *Files) createUpload(ctx context.Context, actor domain.Actor, resourceID
 	if json.Unmarshal(payload, &u) != nil || !(filePurpose(u) || generated && u.Purpose == "reimbursement.export.result" && u.MediaType == "text/csv") || u.SizeBytes < 1 || u.SizeBytes > 20<<20 || len(u.OriginalName) > 255 || strings.ContainsAny(u.OriginalName, "/\\\x00") {
 		return nil, domain.Fail("UPLOAD_INVALID", "请选择20MiB以内允许格式的原始文件", 422)
 	}
+	// OFD 的浏览器别名只在声明层归一；原始字节及其摘要始终保持不变。
+	if u.MediaType == "application/vnd.ofd" {
+		u.MediaType = "application/ofd"
+	}
 	h, e := hex.DecodeString(u.SHA256)
 	if e != nil || len(h) != 32 || u.IdempotencyKey == "" {
 		return nil, domain.Fail("UPLOAD_INVALID", "文件摘要和幂等标识不完整", 422)
@@ -98,10 +102,22 @@ func (f *Files) createUpload(ctx context.Context, actor domain.Actor, resourceID
 	if json.Unmarshal(data, &metadata) != nil || metadata.UploadID == "" || metadata.FileID == "" {
 		return nil, ErrUnavailable
 	}
+	if metadata.Status != "CREATED" && metadata.Status != "READY" && metadata.Status != "UPLOADING" {
+		return nil, domain.Fail("FILE_GATEWAY_UNAVAILABLE", "文件上传会话状态异常，请查询原文档状态", 503)
+	}
+	if metadata.Status == "READY" && !strings.EqualFold(metadata.SHA256, u.SHA256) {
+		return nil, domain.Fail("FILE_NOT_READY", "已上传文件摘要与原声明不一致", 409)
+	}
+	if metadata.MediaType != "" && metadata.MediaType != u.MediaType {
+		return nil, domain.Fail("FILE_UPLOAD_SESSION_MISMATCH", "原上传会话的文件类型与当前声明不一致", 409)
+	}
 	var session map[string]any
 	if json.Unmarshal(data, &session) != nil {
 		return nil, ErrUnavailable
 	}
+	// 网关存储短用途，报销本地身份和完成权限必须保留完整业务用途键。
+	session["purpose"] = u.Purpose
+	session["media_type"] = u.MediaType
 	var persisted map[string]any
 	finished := false
 	e = f.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -142,6 +158,14 @@ func (f *Files) createUpload(ctx context.Context, actor domain.Actor, resourceID
 	}
 	if finished {
 		return json.Marshal(persisted)
+	}
+	if metadata.Status == "UPLOADING" {
+		return nil, domain.Fail("FILE_UPLOAD_IN_PROGRESS", "原文件仍在上传，请保留当前文档并稍后查询完成状态", 503)
+	}
+	if metadata.Status == "READY" {
+		session["document_id"] = resourceID
+		delete(session, "ticket")
+		return json.Marshal(session)
 	}
 	ticket, e := f.Client.Call(ctx, "POST", "/api/v2/upload-sessions/"+url.PathEscape(metadata.UploadID)+"/tickets", nil)
 	if e != nil {

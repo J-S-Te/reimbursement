@@ -52,6 +52,14 @@ func New(service *application.Service, authenticate gin.HandlerFunc) *gin.Engine
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
 		c.Next()
 	})
+	for _, route := range []struct{ path, kind string }{
+		{"/personnel-options", "personnel"}, {"/invoice-document-options", "documents"},
+		{"/invoice-options", "invoices"}, {"/organization-options", "organizations"},
+		{"/configuration-options", "configurations"}, {"/claims/:id/payment-options", "payment"},
+		{"/payment-exceptions/:id/resolution-options", "resolution"},
+	} {
+		group.GET(route.path, h.businessOptions(route.kind))
+	}
 	for _, route := range []struct{ path, kind string }{{"/claims", "claims"}, {"/claims/:id", "claim"}, {"/approval-tasks", "approval-tasks"}, {"/approval-tasks/:id", "approval-task"}, {"/invoices", "invoices"}, {"/invoices/:id", "invoice"}, {"/payments/:id", "payment"}, {"/claims/:id/payments", "payments"}, {"/claims/:id/reversal-requests", "reversal-requests"}, {"/claims/:id/archives", "archives"}, {"/commands/:id", "commands"}, {"/dashboard", "dashboard"}, {"/claim-options", "claim-options"}, {"/invoice-documents/:id", "documents"}, {"/parse-runs/:id", "jobs"}, {"/exports/:id", "exports"}} {
 		group.GET(route.path, h.query(route.kind))
 	}

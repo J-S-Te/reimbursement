@@ -792,6 +792,14 @@ func (s *Service) claimOptions(db *gorm.DB, a domain.Actor) (any, error) {
 	if !a.Has("expense.claim.create") && !a.Has("expense.claim.update") {
 		return nil, domain.Fail("FORBIDDEN", "没有草稿操作权限", 403)
 	}
+	applicant, err := s.currentDraftApplicant(db.Statement.Context, a)
+	if err != nil {
+		return nil, err
+	}
+	appointments := map[string]bool{}
+	for _, org := range applicant.Organizations {
+		appointments[org.ID] = true
+	}
 	organizations := map[string]bool{}
 	employeeRows, err := configs(db, a.TenantID, "employee_profiles", true)
 	if err != nil {
@@ -802,7 +810,7 @@ func (s *Service) claimOptions(db *gorm.DB, a domain.Actor) (any, error) {
 		if e := json.Unmarshal([]byte(row.ContentJSON), &p); e != nil {
 			return nil, e
 		}
-		if p.SubjectID == a.SubjectID && p.Active {
+		if p.SubjectID == a.SubjectID && p.Active && appointments[p.OrgID] {
 			organizations[p.OrgID] = true
 		}
 	}
@@ -871,7 +879,12 @@ func (s *Service) claimOptions(db *gorm.DB, a domain.Actor) (any, error) {
 	for kind := range fees {
 		types = append(types, kind)
 	}
-	return map[string]any{"finance_entities": entities, "payee_profiles": payees, "employee_profiles": profiles, "fee_types": types, "standards": standards, "historical_tail_policies": tails, "org_ids": mapKeys(organizations)}, nil
+	return map[string]any{
+		"finance_entities": entities, "payee_profiles": payees, "employee_profiles": profiles,
+		"fee_types": types, "standards": standards, "historical_tail_policies": tails,
+		"org_ids": mapKeys(organizations), "organizations": applicant.Organizations,
+		"applicant": applicant, "draft_context": selectDraftContext(applicant, profiles),
+	}, nil
 }
 
 // ProjectOptions 仅以当前会话主体代理授权项目搜索。

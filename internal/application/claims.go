@@ -27,6 +27,11 @@ func (s *Service) preflight(ctx context.Context, db *gorm.DB, cc *commandContext
 	if e := commandResourceBounds(cc.operation, payload); e != nil {
 		return e
 	}
+	if cc.operation == "claim.create" || cc.operation == "claim.update" || cc.operation == "claim.submit" {
+		if e := s.preflightDraftAppointment(ctx, db, cc, payload); e != nil {
+			return e
+		}
+	}
 	// 票据控制命令在进入本地事务前复核真实原件归属与文件网关，避免只靠事务内结论承担外部文件权限。
 	switch cc.operation {
 	case "invoice.correction.request", "invoice.correction.decide", "claim.invoice.reconfirm", "invoice.source.append", "invoice.risk.record", "invoice.risk.close":
@@ -253,8 +258,12 @@ func (s *Service) editClaim(tx *gorm.DB, cc *commandContext, payload json.RawMes
 		if input.RouteType != "" && profile.RouteType != input.RouteType {
 			return nil, "", domain.Fail("ROUTE_TYPE_MISMATCH", "费用线路与已审核人员资料不一致", 422)
 		}
+		input.RouteType = profile.RouteType
 	}
 	if e = populateDraftClaim(&c, input); e != nil {
+		return nil, "", e
+	}
+	if e = verifyDraftAppointment(tx, cc, c); e != nil {
 		return nil, "", e
 	}
 	if e = rebuildDraftClassificationEvidence(tx, &c); e != nil {

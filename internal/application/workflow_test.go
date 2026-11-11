@@ -92,6 +92,8 @@ func setupWorkflow(t *testing.T) (*Service, *gorm.DB, *projectFixture) {
 		}
 	}
 	p := &projectFixture{}
+	seedPolicy(t, db, "payment_accounts", domain.PaymentAccount{ID: "selection-source",
+		Name: "公司日常付款", FinanceEntityID: "entity", AccountRef: "source", Active: true})
 	return New(db, Dependencies{Projects: p, Files: filesFixture{}, Personnel: workflowPersonnel{}, Environment: "test"}), db, p
 }
 
@@ -456,6 +458,16 @@ func TestApprovalSnapshotDetectsAllocationTampering(t *testing.T) {
 }
 
 type workflowPersonnel struct{}
+
+// CurrentApplicant 提供隔离业务夹具明确声明的当前本人任职，不读取真实平台。
+// 参数：ctx 为测试边界；actor 为夹具当前用户。
+// 返回值：本人在测试组织的当前任职与名称。
+func (workflowPersonnel) CurrentApplicant(ctx context.Context, actor domain.Actor) (domain.PersonOption, error) {
+	return domain.PersonOption{ID: actor.SubjectID, Name: "测试申请人", Organizations: []domain.OrganizationOption{
+		{ID: "org", Name: "测试部门", IsPrimary: true},
+		{ID: "sales-org", Name: "测试销售部"},
+	}}, nil
+}
 
 // VerifyApprover 仅允许夹具明确声明的主体和各自精确节点能力。
 // 参数：上下文、可信申请人、目标受理人及节点权限。

@@ -39,7 +39,7 @@ func policyShape(kind, raw string) (string, string, string, bool, error) {
 	if e := json.Unmarshal([]byte(raw), &values); e != nil {
 		return "", "", "", false, e
 	}
-	fields := map[string][]string{"historical_tail_policies": {"org_id", "project_id"}, "standards": {"org_id", "fee_type", "city_level", "grade", "priority", "transport_category", "accommodation_category"}, "route_rules": {"org_id", "route_type"}, "assignments": {"org_id", "project_id", "role", "subject_id"}, "employee_profiles": {"subject_id", "org_id"}, "invoice_rules": {"invoice_type"}, "scopes": {"subject_id"}, "finance_entities": {"tax_id"}, "payee_profiles": {"subject_id", "account_ref"}, "city_mappings": {"org_id", "source_city"}, "archive_retention_policies": {"org_id"}}[kind]
+	fields := map[string][]string{"historical_tail_policies": {"org_id", "project_id"}, "standards": {"org_id", "fee_type", "city_level", "grade", "priority", "transport_category", "accommodation_category"}, "route_rules": {"org_id", "route_type"}, "assignments": {"org_id", "project_id", "role", "subject_id"}, "employee_profiles": {"subject_id", "org_id"}, "invoice_rules": {"invoice_type"}, "scopes": {"subject_id"}, "finance_entities": {"tax_id"}, "payment_accounts": {"finance_entity_id", "account_ref"}, "payee_profiles": {"subject_id", "account_ref"}, "city_mappings": {"org_id", "source_city"}, "archive_retention_policies": {"org_id"}}[kind]
 	if len(fields) == 0 {
 		return "", "", "", false, domain.Fail("INVALID_CONFIGURATION", "不支持此类政策生命周期", 422)
 	}
@@ -59,7 +59,7 @@ func policyShape(kind, raw string) (string, string, string, bool, error) {
 	encoded, e := encode(key)
 	start, _ := values["valid_from"].(string)
 	end, _ := values["valid_until"].(string)
-	active := kind != "employee_profiles" && kind != "invoice_rules" && kind != "finance_entities" && kind != "payee_profiles"
+	active := kind != "employee_profiles" && kind != "invoice_rules" && kind != "finance_entities" && kind != "payee_profiles" && kind != "payment_accounts"
 	if kind == "historical_tail_policies" {
 		enabled, _ := values["enabled"].(bool)
 		active = enabled

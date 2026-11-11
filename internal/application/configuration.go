@@ -27,7 +27,7 @@ func (s *Service) configure(tx *gorm.DB, cc *commandContext, payload json.RawMes
 	if kind == "" && cc.operation == "config.save" {
 		kind = cc.resourceID
 	}
-	allowed := map[string]bool{"standards": true, "historical_tail_policies": true, "route_rules": true, "assignments": true, "finance_entities": true, "payee_profiles": true, "scopes": true, "employee_profiles": true, "invoice_rules": true, "city_mappings": true, "archive_retention_policies": true}
+	allowed := map[string]bool{"standards": true, "historical_tail_policies": true, "route_rules": true, "assignments": true, "finance_entities": true, "payment_accounts": true, "payee_profiles": true, "scopes": true, "employee_profiles": true, "invoice_rules": true, "city_mappings": true, "archive_retention_policies": true}
 	if !allowed[kind] {
 		return nil, "", domain.Fail("INVALID_CONFIGURATION", "不支持的配置种类", 422)
 	}
@@ -88,6 +88,11 @@ func (s *Service) configure(tx *gorm.DB, cc *commandContext, payload json.RawMes
 	if e = validateConfig(kind, raw); e != nil {
 		return nil, "", e
 	}
+	if kind == "payment_accounts" {
+		if e = validatePaymentAccountEntity(tx, cc.actor.TenantID, raw); e != nil {
+			return nil, "", e
+		}
+	}
 	if kind == "invoice_rules" {
 		policy, err := decodeInvoicePolicy(raw)
 		if err != nil {
@@ -123,6 +128,8 @@ func (s *Service) configure(tx *gorm.DB, cc *commandContext, payload json.RawMes
 func validateConfig(kind, raw string) error {
 	invalid := domain.Fail("INVALID_CONFIGURATION", "配置必填字段、范围或日期不合法", 422)
 	switch kind {
+	case "payment_accounts":
+		return validatePaymentAccountConfig(raw)
 	case "city_mappings", "archive_retention_policies":
 		return validateAdditionalPolicy(kind, raw)
 	case "historical_tail_policies":

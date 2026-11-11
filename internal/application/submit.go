@@ -74,6 +74,9 @@ func (s *Service) submit(tx *gorm.DB, cc *commandContext) (any, string, error) {
 	if e != nil {
 		return nil, "", e
 	}
+	if e = verifyDraftAppointment(tx, cc, c); e != nil {
+		return nil, "", e
+	}
 	if e = bindSubmissionQualifications(tx, cc, c, &plan); e != nil {
 		return nil, "", e
 	}
