@@ -200,6 +200,23 @@
                 "SALES"
               ]
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "单据状态过滤。单值或逗号分隔多值（如 RETURNED,PAID）；空值不过滤以保持既有调用方行为；取值仅限单据六态，非法值返回422而不静默忽略。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "IN_APPROVAL",
+                "RETURNED",
+                "APPROVED_PENDING_PAYMENT",
+                "PAID",
+                "VOID"
+              ]
+            }
           }
         ]
       },

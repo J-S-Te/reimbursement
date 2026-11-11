@@ -155,7 +155,8 @@ func decideInvoiceCorrection(tx *gorm.DB, cc *commandContext, input InvoiceContr
 		status = "APPROVED"
 		if c.ActivePaymentID != "" || c.Status == "PAID" {
 			impactStatus = "FINANCE_REVIEW_REQUIRED"
-			if _, _, e = createInvoiceRisk(tx, cc.actor, row, c, "CORRECTION", row.ID, input.Reason, nil); e != nil {
+			if _, _, e = createInvoiceRisk(tx, cc.actor, row, c,
+				"CORRECTION", row.ID, input.Reason, request.ID, nil); e != nil {
 				return nil, "", e
 			}
 		} else {

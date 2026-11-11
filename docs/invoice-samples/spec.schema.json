@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "reimbursement.invoice-samples.schema.v1",
+  "type": "object",
+  "required": [
+    "spec_id",
+    "version",
+    "capability",
+    "sample_plan",
+    "naming",
+    "gold_standard",
+    "compliance",
+    "acceptance",
+    "lifecycle",
+    "agent_protocol"
+  ],
+  "properties": {
+    "spec_id": {
+      "const": "reimbursement.invoice-samples"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "capability": {
+      "type": "object",
+      "required": [
+        "supported_media",
+        "manual_only_media",
+        "hard_limits",
+        "key_fields"
+      ],
+      "properties": {
+        "hard_limits": {
+          "type": "object",
+          "required": [
+            "max_bytes",
+            "max_pages"
+          ]
+        }
+      }
+    },
+    "sample_plan": {
+      "type": "object",
+      "required": [
+        "batches"
+      ],
+      "properties": {
+        "batches": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "required",
+              "cases"
+            ],
+            "properties": {
+              "cases": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "ticket",
+                    "variant",
+                    "media",
+                    "count"
+                  ],
+                  "properties": {
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "blocking": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "required": [
+        "metrics",
+        "verdict_rule"
+      ],
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "blocking"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
