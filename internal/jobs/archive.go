@@ -125,7 +125,8 @@ func (p *Processor) archive(ctx context.Context, row Record) (err error) {
 		hash := sha256.Sum256(bytes)
 		manifestFiles = append(manifestFiles, map[string]string{"file_id": id, "document_id": document.ID, "sha256": hex.EncodeToString(hash[:])})
 	}
-	parseRuns, sourceRefs, e := p.archiveParseReferences(ctx, row.TenantID, documentIDs, archive.CreatedAt)
+	parseRuns, sourceRefs, e := p.archiveRequestedParseReferences(
+		ctx, row.TenantID, documentIDs, archive.CreatedAt, &request)
 	if e != nil {
 		return e
 	}

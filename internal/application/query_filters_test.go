@@ -261,3 +261,87 @@ func TestQueryUnknownClaimTypeIsNotInvented(t *testing.T) {
 		t.Fatalf("旧类型不得推断为差旅: %v", result)
 	}
 }
+
+// TestQueryClaimStatusSupportsSingleMultipleAndEmpty 验证单据列表状态单值、逗号多值、空值及组合条件的过滤与计数一致。
+// 参数：t 为测试上下文。
+// 返回值：无；仅使用临时 SQLite，不连接真实库。
+func TestQueryClaimStatusSupportsSingleMultipleAndEmpty(t *testing.T) {
+	s, db, _ := setupWorkflow(t)
+	applicant := domain.Actor{TenantID: "t", SubjectID: "app", Permissions: []string{"expense.claim.read"}}
+	finance := domain.Actor{TenantID: "t", SubjectID: "fin", Permissions: []string{"expense.claim.read", "expense.scope.tenant_all"}}
+	created := time.Date(2026, 11, 10, 2, 0, 0, 0, time.UTC)
+	rows := []struct{ id, tenant, owner, status, title string }{
+		{"draft", "t", "app", "DRAFT", "报销草稿"},
+		{"returned", "t", "app", "RETURNED", "报销退回"},
+		{"approval", "t", "app", "IN_APPROVAL", "报销审批中"},
+		{"approved", "t", "app", "APPROVED_PENDING_PAYMENT", "报销待付"},
+		{"paid", "t", "app", "PAID", "报销已付"},
+		{"void", "t", "app", "VOID", "报销作废"},
+		{"mate-paid", "t", "mate", "PAID", "报销他人已付"},
+		{"foreign-paid", "other", "app", "PAID", "报销跨租户已付"},
+	}
+	for _, row := range rows {
+		seedQueryClaim(t, db, domain.Claim{ID: row.id, TenantID: row.tenant, Applicant: row.owner, OrgID: "org", ClaimNo: "BX-" + row.id, Title: row.title, Status: row.status, CreatedAt: created}, "TRAVEL")
+	}
+	cases := []struct {
+		name   string
+		actor  domain.Actor
+		params map[string]string
+		total  int
+	}{
+		{"空值不过滤", applicant, nil, 6},
+		{"单状态", applicant, map[string]string{"status": "RETURNED"}, 1},
+		{"多状态", applicant, map[string]string{"status": "RETURNED,PAID"}, 2},
+		{"逗号后空格", applicant, map[string]string{"status": "RETURNED, PAID"}, 2},
+		{"重复状态去重", applicant, map[string]string{"status": "PAID,PAID"}, 1},
+		{"全部六态", applicant, map[string]string{"status": "DRAFT,IN_APPROVAL,RETURNED,APPROVED_PENDING_PAYMENT,PAID,VOID"}, 6},
+		{"与关键词类型日期组合", applicant, map[string]string{"status": "PAID,VOID", "q": "报销", "claim_type": "TRAVEL", "date_from": "2026-11-10", "date_to": "2026-11-10"}, 2},
+		{"与本人范围组合", applicant, map[string]string{"status": "PAID", "mine": "true"}, 1},
+		{"财务范围单状态", finance, map[string]string{"status": "PAID"}, 2},
+		{"财务范围与申请人组合", finance, map[string]string{"status": "PAID", "applicant_subject_id": "mate"}, 1},
+		{"财务范围与本人组合无单据", finance, map[string]string{"status": "PAID", "mine": "true"}, 0},
+	}
+	for _, tc := range cases {
+		result := queryResultMap(t, s, tc.actor, "claims", tc.params)
+		items := result["items"].([]any)
+		if result["total"] != float64(tc.total) || len(items) != tc.total {
+			t.Fatalf("%s total=%v items=%d 期望 %d: %v", tc.name, result["total"], len(items), tc.total, result)
+		}
+	}
+	first := queryResultMap(t, s, applicant, "claims", map[string]string{"status": "RETURNED,PAID", "page": "1", "page_size": "1"})
+	second := queryResultMap(t, s, applicant, "claims", map[string]string{"status": "RETURNED,PAID", "page": "2", "page_size": "1"})
+	firstItems, secondItems := first["items"].([]any), second["items"].([]any)
+	if first["total"] != float64(2) || len(firstItems) != 1 || second["total"] != float64(2) || len(secondItems) != 1 {
+		t.Fatalf("分页total须保持全部匹配数: %v %v", first, second)
+	}
+	if firstItems[0].(map[string]any)["id"] == secondItems[0].(map[string]any)["id"] {
+		t.Fatalf("状态过滤分页不得重复同一单据: %v %v", firstItems, secondItems)
+	}
+}
+
+// TestQueryClaimStatusRejectsInvalidValues 验证非法状态、空段与大小写差异返回422，任务和票据枚举语义不变。
+// 参数：t 为测试上下文。
+// 返回值：无；仅使用临时 SQLite，不连接真实库。
+func TestQueryClaimStatusRejectsInvalidValues(t *testing.T) {
+	s, _, _ := setupWorkflow(t)
+	a := domain.Actor{TenantID: "t", SubjectID: "app", Permissions: []string{"expense.claim.read", "expense.approval.act", "expense.invoice.read"}}
+	cases := []struct {
+		kind   string
+		params map[string]string
+	}{
+		{"claims", map[string]string{"status": "PENDING"}},
+		{"claims", map[string]string{"status": "DRAFT,BOGUS"}},
+		{"claims", map[string]string{"status": "DRAFT,,PAID"}},
+		{"claims", map[string]string{"status": "DRAFT,"}},
+		{"claims", map[string]string{"status": "draft"}},
+		{"approval-tasks", map[string]string{"status": "PENDING,APPROVED"}},
+		{"invoices", map[string]string{"status": "AVAILABLE,RESERVED"}},
+	}
+	for _, tc := range cases {
+		_, err := s.Query(context.Background(), a, tc.kind, "", tc.params)
+		public, ok := err.(*domain.Problem)
+		if !ok || public.Status != 422 || public.Code != "INVALID_QUERY_FILTER" {
+			t.Errorf("%s %v 应返回422 INVALID_QUERY_FILTER，实际 %v", tc.kind, tc.params, err)
+		}
+	}
+}

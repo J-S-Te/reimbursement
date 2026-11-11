@@ -44,7 +44,8 @@ func recordInvoiceRisk(tx *gorm.DB, cc *commandContext, input InvoiceControlInpu
 			return nil, "", e
 		}
 	}
-	risk, resource, e := createInvoiceRisk(tx, cc.actor, row, c, input.RiskKind, original.ID, input.Reason, input.EvidenceFileIDs)
+	risk, resource, e := createInvoiceRisk(tx, cc.actor, row, c,
+		input.RiskKind, original.ID, input.Reason, "", input.EvidenceFileIDs)
 	if e != nil {
 		return nil, "", e
 	}
@@ -60,14 +61,24 @@ func recordInvoiceRisk(tx *gorm.DB, cc *commandContext, input InvoiceControlInpu
 }
 
 // createInvoiceRisk 建立独立财务复核案件并通知原申请人，不改发票、付款或退款事实。
-// 参数：tx 为事务，a 为报告人，row/c 为票据及可选关联单，kind/original/reason/evidence 为风险依据。
+// 参数：tx 为事务，a 为报告人，row/c 为票据及关联单，
+//
+//	kind/original/reason/evidence 为风险依据，correctionID 为自动更正风险的精确案件标识。
+//
 // 返回值：新风险案件、票据标识和错误。
-func createInvoiceRisk(tx *gorm.DB, a domain.Actor, row store.Invoice, c *domain.Claim, kind, original, reason string, evidence []string) (store.InvoiceRisk, string, error) {
+func createInvoiceRisk(
+	tx *gorm.DB, a domain.Actor, row store.Invoice, c *domain.Claim,
+	kind, original, reason, correctionID string, evidence []string,
+) (store.InvoiceRisk, string, error) {
 	id, e := newID()
 	if e != nil {
 		return store.InvoiceRisk{}, "", e
 	}
-	raw, e := encode(map[string]any{"reason": reason, "evidence_file_ids": evidence, "invoice_version": row.Version})
+	content := map[string]any{"reason": reason, "evidence_file_ids": evidence, "invoice_version": row.Version}
+	if kind == "CORRECTION" && correctionID != "" {
+		content["correction_id"] = correctionID
+	}
+	raw, e := encode(content)
 	if e != nil {
 		return store.InvoiceRisk{}, "", e
 	}
@@ -166,8 +177,12 @@ func closeInvoiceRisk(tx *gorm.DB, cc *commandContext, input InvoiceControlInput
 	if e = tx.Model(&store.InvoiceControlImpact{}).Where("tenant_id = ? AND control_id = ?", risk.TenantID, risk.ID).Updates(map[string]any{"status": "RESOLVED", "version": gorm.Expr("version + 1")}).Error; e != nil {
 		return nil, "", e
 	}
-	if correctionID, _ := content["correction_id"].(string); correctionID != "" && input.Resolution == "DISMISSED" {
-		e = tx.Model(&store.InvoiceControlImpact{}).Where("tenant_id = ? AND control_id = ? AND status = ?", risk.TenantID, correctionID, "FINANCE_REVIEW_REQUIRED").Updates(map[string]any{"status": "RESOLVED", "version": gorm.Expr("version + 1")}).Error
+	if correctionID, _ := content["correction_id"].(string); risk.Kind == "CORRECTION" &&
+		correctionID != "" && input.Resolution == "DISMISSED" {
+		e = tx.Model(&store.InvoiceControlImpact{}).Where(
+			"tenant_id = ? AND invoice_id = ? AND control_id = ? AND kind = ? AND status = ?",
+			risk.TenantID, risk.InvoiceID, correctionID, "CORRECTION", "FINANCE_REVIEW_REQUIRED",
+		).Updates(map[string]any{"status": "RESOLVED", "version": gorm.Expr("version + 1")}).Error
 	}
 	if e == nil {
 		e = appendInvoiceEvidenceArchives(tx, c, originalClaim)

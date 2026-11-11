@@ -85,3 +85,51 @@ func TestInvoiceHTTPRejectsNumericMoney(t *testing.T) {
 		t.Fatalf("numeric money status=%d body=%s", response.Code, response.Body.String())
 	}
 }
+
+// TestClaimListHTTPStatusFilterContract 验证列表状态单值、逗号多值线上契约及非法状态422。
+// 参数：t为测试上下文。
+// 返回值：无；使用临时SQLite与显式身份替身，不连接真实库。
+func TestClaimListHTTPStatusFilterContract(t *testing.T) {
+	router := testHTTP(t, domain.Actor{TenantID: "t", SubjectID: "app", Permissions: []string{"expense.claim.create", "expense.claim.read"}})
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/claims", strings.NewReader(`{"command_id":"status-draft","title":"状态过滤草稿","route_type":"TECHNICAL"}`))
+	create.Header.Set("Content-Type", "application/json")
+	created := httptest.NewRecorder()
+	router.ServeHTTP(created, create)
+	if created.Code != 200 && created.Code != 201 {
+		t.Fatalf("create draft status=%d body=%s", created.Code, created.Body.String())
+	}
+	for _, tc := range []struct {
+		query string
+		total float64
+	}{
+		{"status=DRAFT", 1},
+		{"status=DRAFT,RETURNED", 1},
+		{"status=RETURNED", 0},
+	} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/claims?"+tc.query, nil))
+		if response.Code != 200 {
+			t.Fatalf("%s status=%d body=%s", tc.query, response.Code, response.Body.String())
+		}
+		var body struct {
+			Data struct {
+				Total float64 `json:"total"`
+				Items []any   `json:"items"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.Data.Total != tc.total || float64(len(body.Data.Items)) != tc.total {
+			t.Fatalf("%s total与items不一致: %s", tc.query, response.Body.String())
+		}
+	}
+	invalid := httptest.NewRecorder()
+	router.ServeHTTP(invalid, httptest.NewRequest(http.MethodGet, "/api/v1/claims?status=PENDING", nil))
+	var problem struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(invalid.Body.Bytes(), &problem); err != nil {
+		t.Fatalf("invalid status body=%s", invalid.Body.String())
+	}
+	if invalid.Code != 422 || problem.Code != "INVALID_QUERY_FILTER" {
+		t.Fatalf("非法状态须422且不静默忽略: status=%d body=%s", invalid.Code, invalid.Body.String())
+	}
+}

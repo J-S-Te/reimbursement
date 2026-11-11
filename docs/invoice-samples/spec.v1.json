@@ -1,0 +1,686 @@
+{
+  "spec_id": "reimbursement.invoice-samples",
+  "version": "1.0.0",
+  "status": "ACTIVE",
+  "locale": "zh-CN",
+  "purpose": "定义报销子系统发票解析验收所需的授权票样集合、金标准、命名、合规与验收判据，供 AI 与人工共同执行。",
+  "consumers": [
+    "AI 执行器：清点/分类/打分/出报告",
+    "财务：提供样本与金标准",
+    "评审人：签字"
+  ],
+  "decision_rights": {
+    "ai_may": [
+      "判断样本覆盖是否满足 spec",
+      "按文件名与 MIME 分类媒体类型",
+      "计算各项验收指标",
+      "输出缺失清单并按 owner 分组",
+      "判定 REJECTED 及原因",
+      "生成报告与证据索引"
+    ],
+    "human_must": [
+      "授权使用真实票据的范围",
+      "确认脱敏是否充分",
+      "最终签收 ACCEPTED",
+      "变更数量门槛与验收阈值",
+      "决定新票种是否纳入首发"
+    ],
+    "ai_must_not": [
+      "把未提交的样本计入覆盖",
+      "把人工复核结果写成自动解析成功",
+      "把缺失样本用合成文件冒充",
+      "在阻断项未通过时给出 ACCEPTED",
+      "修改 spec 阈值以让结果通过"
+    ]
+  },
+  "capability": {
+    "supported_media": [
+      {
+        "media": "pdf_text",
+        "detect": "扩展名 .pdf 且存在文字层",
+        "behavior": "区域识别购销方 + 金额守恒 + 多税率行独立保留"
+      },
+      {
+        "media": "ofd",
+        "detect": "扩展名 .ofd",
+        "behavior": "结构化解析"
+      }
+    ],
+    "manual_only_media": [
+      {
+        "media": "pdf_image",
+        "detect": "扫描 PDF 无文字层",
+        "behavior": "必须进入待处理/人工，禁止标记解析成功"
+      },
+      {
+        "media": "image",
+        "detect": ".jpg/.jpeg/.png",
+        "behavior": "必须进入待处理/人工，禁止标记解析成功"
+      }
+    ],
+    "hard_limits": {
+      "max_bytes": 20971520,
+      "max_expanded_bytes": 104857600,
+      "max_pages": 100,
+      "env_overrides": {
+        "MAX_BYTES": "REIMBURSEMENT_PARSER_MAX_BYTES",
+        "MAX_EXPANDED_BYTES": "REIMBURSEMENT_PARSER_MAX_EXPANDED_BYTES",
+        "MAX_PAGES": "REIMBURSEMENT_PARSER_MAX_PAGES"
+      },
+      "on_exceed": "有界失败并返回明确原因，不得拖垮 API 进程"
+    },
+    "extraction_fields": [
+      "invoice_type",
+      "invoice_code",
+      "invoice_number",
+      "invoice_date",
+      "seller_tax_id",
+      "buyer_tax_id",
+      "total_minor",
+      "tax_minor",
+      "amount_excl_tax_minor",
+      "currency",
+      "line_items",
+      "remark"
+    ],
+    "key_fields": [
+      "invoice_number",
+      "seller_tax_id",
+      "buyer_tax_id",
+      "total_minor"
+    ],
+    "source_refs": [
+      "reimbursement/internal/invoiceparser/parser.go:16-18",
+      "reimbursement/internal/domain/types.go (Invoice struct)",
+      "报销管理系统完整开发方案V1.0.docx 第7章、7.6 样本与资源验收"
+    ]
+  },
+  "sample_plan": {
+    "total_required_files": 48,
+    "batches": [
+      {
+        "id": "P0",
+        "required": true,
+        "due": "2026-11-13",
+        "owner": "财务/出纳",
+        "description": "具备自动解析能力的真实电子原件，决定 INV-01 能否关闭",
+        "cases": [
+          {
+            "code": "P0-SPECIAL-PDF",
+            "ticket": "SPECIAL",
+            "variant": "normal",
+            "media": "pdf_text",
+            "label": "增值税电子专用发票",
+            "count": 5,
+            "expected": "auto_parse",
+            "blocking": true
+          },
+          {
+            "code": "P0-NORMAL-PDF",
+            "ticket": "NORMAL",
+            "variant": "normal",
+            "media": "pdf_text",
+            "label": "增值税电子普通发票",
+            "count": 5,
+            "expected": "auto_parse",
+            "blocking": true
+          },
+          {
+            "code": "P0-DIGITAL-PDF",
+            "ticket": "DIGITAL",
+            "variant": "normal",
+            "media": "pdf_text",
+            "label": "全电发票（数电票，20位号码）",
+            "count": 4,
+            "expected": "auto_parse_number_not_truncated",
+            "blocking": true
+          },
+          {
+            "code": "P0-SPECIAL-OFD",
+            "ticket": "SPECIAL",
+            "variant": "normal",
+            "media": "ofd",
+            "label": "专票 OFD 原件",
+            "count": 4,
+            "expected": "auto_parse",
+            "blocking": true
+          },
+          {
+            "code": "P0-AIR-PDF",
+            "ticket": "AIR",
+            "variant": "normal",
+            "media": "pdf_text",
+            "label": "航空运输电子客票行程单",
+            "count": 3,
+            "expected": "auto_parse_amount_date",
+            "blocking": true
+          },
+          {
+            "code": "P0-RAIL",
+            "ticket": "RAIL",
+            "variant": "normal",
+            "media": "pdf_text|ofd",
+            "label": "铁路电子客票",
+            "count": 4,
+            "expected": "auto_parse_amount_date",
+            "blocking": true
+          }
+        ]
+      },
+      {
+        "id": "P1",
+        "required": false,
+        "due": "2026-11-18",
+        "owner": "财务/员工",
+        "description": "扩展票种，多数走人工，验证台账兼容与失败关闭",
+        "cases": [
+          {
+            "code": "P1-TAXI",
+            "ticket": "TAXI",
+            "variant": "normal",
+            "media": "image|pdf_text",
+            "label": "出租车票",
+            "count": 2,
+            "expected": "manual_ok",
+            "blocking": false
+          },
+          {
+            "code": "P1-TOLL",
+            "ticket": "TOLL",
+            "variant": "normal",
+            "media": "image|pdf_text",
+            "label": "过路费票据",
+            "count": 2,
+            "expected": "manual_ok",
+            "blocking": false
+          },
+          {
+            "code": "P1-FISCAL",
+            "ticket": "FISCAL",
+            "variant": "normal",
+            "media": "pdf_text",
+            "label": "财政票据/收据",
+            "count": 2,
+            "expected": "manual_ok",
+            "blocking": false
+          },
+          {
+            "code": "P1-OVERSEA",
+            "ticket": "OVERSEA",
+            "variant": "normal",
+            "media": "pdf_text|image",
+            "label": "境外票据（英文/多币种）",
+            "count": 2,
+            "expected": "fail_closed_no_guess",
+            "blocking": false
+          },
+          {
+            "code": "P1-RED",
+            "ticket": "RED",
+            "variant": "normal",
+            "media": "pdf_text",
+            "label": "红冲票（负数）",
+            "count": 2,
+            "expected": "negative_amount_preserved",
+            "blocking": false
+          },
+          {
+            "code": "P1-VOID",
+            "ticket": "VOID",
+            "variant": "normal",
+            "media": "pdf_text",
+            "label": "作废票",
+            "count": 1,
+            "expected": "status_or_manual",
+            "blocking": false
+          }
+        ]
+      },
+      {
+        "id": "ADV",
+        "required": true,
+        "due": "2026-11-13",
+        "owner": "财务/测试",
+        "description": "失败安全与对抗样本，验证不误报、不崩溃、不静默漏票",
+        "cases": [
+          {
+            "code": "ADV-SCAN",
+            "ticket": "SCAN",
+            "variant": "notext",
+            "media": "pdf_image",
+            "label": "无文字层扫描 PDF",
+            "count": 2,
+            "expected": "manual_no_false_success",
+            "blocking": true
+          },
+          {
+            "code": "ADV-PHOTO",
+            "ticket": "PHOTO",
+            "variant": "normal",
+            "media": "image",
+            "label": "拍照 JPG/PNG",
+            "count": 2,
+            "expected": "manual_no_false_success",
+            "blocking": true
+          },
+          {
+            "code": "ADV-ENCRYPTED",
+            "ticket": "BROKEN",
+            "variant": "encrypted",
+            "media": "pdf_text",
+            "label": "加密 PDF",
+            "count": 1,
+            "expected": "bounded_fail",
+            "blocking": true
+          },
+          {
+            "code": "ADV-CORRUPT",
+            "ticket": "BROKEN",
+            "variant": "corrupt",
+            "media": "pdf_text",
+            "label": "损坏/截断文件",
+            "count": 1,
+            "expected": "bounded_fail",
+            "blocking": true
+          },
+          {
+            "code": "ADV-OVERSIZE",
+            "ticket": "BROKEN",
+            "variant": "oversized",
+            "media": "pdf_text",
+            "label": "超过 20MiB",
+            "count": 1,
+            "expected": "limit_error",
+            "blocking": true
+          },
+          {
+            "code": "ADV-OVERPAGES",
+            "ticket": "BROKEN",
+            "variant": "overpages",
+            "media": "pdf_text",
+            "label": "超过 100 页",
+            "count": 1,
+            "expected": "limit_error",
+            "blocking": true
+          },
+          {
+            "code": "ADV-MERGED",
+            "ticket": "MERGED",
+            "variant": "normal",
+            "media": "pdf_text",
+            "label": "多票合并 PDF",
+            "count": 2,
+            "expected": "manual_split_no_silent_loss",
+            "blocking": true
+          },
+          {
+            "code": "ADV-SIMILAR-TAXID",
+            "ticket": "SIMILAR",
+            "variant": "similar-taxid",
+            "media": "pdf_text",
+            "label": "购销方相似税号",
+            "count": 1,
+            "expected": "no_swap",
+            "blocking": true
+          },
+          {
+            "code": "ADV-MULTIRATE",
+            "ticket": "MULTIRATE",
+            "variant": "multirate",
+            "media": "pdf_text",
+            "label": "多税率混排",
+            "count": 1,
+            "expected": "independent_rows",
+            "blocking": true
+          }
+        ]
+      }
+    ]
+  },
+  "naming": {
+    "pattern": "^(?P<ticket>[A-Z][A-Z0-9]*)-(?P<seq>[0-9]{3})-(?P<variant>[a-z0-9-]+)\\.(?P<ext>pdf|ofd|jpg|jpeg|png)$",
+    "examples": [
+      "SPECIAL-001-normal.pdf",
+      "DIGITAL-003-normal.pdf",
+      "SCAN-002-notext.pdf",
+      "BROKEN-001-encrypted.pdf",
+      "MERGED-001-normal.pdf"
+    ],
+    "rule": "ticket 与 variant 必须能唯一匹配到 sample_plan 中某个 case；不能匹配的文件计入 unmapped，不计覆盖",
+    "gold_file": "gold.csv",
+    "manifest_file": "manifest.json"
+  },
+  "gold_standard": {
+    "format": "csv",
+    "encoding": "UTF-8",
+    "id_column": "file_name",
+    "key_columns": [
+      "invoice_number",
+      "seller_tax_id",
+      "buyer_tax_id",
+      "total_minor"
+    ],
+    "columns": [
+      {
+        "name": "file_name",
+        "type": "string",
+        "required": true,
+        "rule": "必须与命名字符串完全一致"
+      },
+      {
+        "name": "invoice_type",
+        "type": "enum",
+        "required": true,
+        "values": [
+          "VAT_SPECIAL",
+          "VAT_NORMAL",
+          "DIGITAL",
+          "AIR",
+          "RAIL",
+          "TAXI",
+          "TOLL",
+          "FISCAL",
+          "OVERSEA",
+          "RED",
+          "VOID",
+          "OTHER"
+        ]
+      },
+      {
+        "name": "invoice_code",
+        "type": "string",
+        "required": false,
+        "rule": "传统票必填；数电票留空"
+      },
+      {
+        "name": "invoice_number",
+        "type": "string",
+        "required": true,
+        "rule": "数电票 20 位，禁止截断；仅允许数字"
+      },
+      {
+        "name": "invoice_date",
+        "type": "date",
+        "required": true,
+        "rule": "YYYY-MM-DD"
+      },
+      {
+        "name": "seller_name",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "seller_tax_id",
+        "type": "string",
+        "required": true,
+        "rule": "15/18/20 位字母数字，大小写保持原样"
+      },
+      {
+        "name": "buyer_name",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "buyer_tax_id",
+        "type": "string",
+        "required": true,
+        "rule": "同 seller_tax_id"
+      },
+      {
+        "name": "total_minor",
+        "type": "int",
+        "required": true,
+        "rule": "整数分字符串，禁止小数与千分位"
+      },
+      {
+        "name": "tax_minor",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "amount_excl_tax_minor",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "currency",
+        "type": "string",
+        "required": true,
+        "rule": "ISO 4217，默认 CNY"
+      },
+      {
+        "name": "line_items",
+        "type": "string",
+        "required": false,
+        "rule": "JSON 数组序列化，元素含 name/rate/amount_minor"
+      },
+      {
+        "name": "remark",
+        "type": "string",
+        "required": false,
+        "rule": "红冲/作废等标记"
+      },
+      {
+        "name": "expected_outcome",
+        "type": "enum",
+        "required": true,
+        "values": [
+          "AUTO_OK",
+          "MANUAL",
+          "BOUNDED_FAIL"
+        ]
+      },
+      {
+        "name": "reviewed_by",
+        "type": "string",
+        "required": true,
+        "rule": "金标准录入人"
+      }
+    ],
+    "normalizations": {
+      "money": "全部换算为整数分；0.1+0.2 类浮点不得出现",
+      "date": "统一 YYYY-MM-DD，时区无关",
+      "tax_id": "去空格，保留字母大小写",
+      "number": "保留前导零，禁止数值化"
+    }
+  },
+  "compliance": {
+    "allowed": [
+      "真实发票号码/税号/金额（限授权范围）"
+    ],
+    "forbidden_repo_commit": [
+      "任何真实票据原文件",
+      "含银行卡号/身份证号的影像",
+      "含个人手机号的行程单原件"
+    ],
+    "redaction": [
+      "银行卡号、身份证号、手机号必须遮盖",
+      "遮盖不得覆盖票号、税号、金额或二维码"
+    ],
+    "storage": "建议工作区外目录 ~/reim-samples/；若放工作区内必须加入 .gitignore",
+    "authorization": "需财务负责人书面确认可用于系统测试，记录在 manifest.json.owner_approval",
+    "retention": "验收签字后按财务要求删除原件，保留 gold.csv 与报告",
+    "manifest_required_keys": ["owner_approval", "redaction_reviewed_by", "redaction_violations"]
+  },
+  "acceptance": {
+    "metrics": [
+      {
+        "id": "M1-coverage",
+        "scope": "required cases",
+        "formula": "submitted_required / planned_required",
+        "threshold": {
+          "eq": 1
+        },
+        "blocking": true
+      },
+      {
+        "id": "M2-auto-success",
+        "scope": "P0 files",
+        "formula": "auto_parsed_ok / p0_total",
+        "threshold": {
+          "gte": 0.95
+        },
+        "blocking": true
+      },
+      {
+        "id": "M3-key-field-false-confirm",
+        "scope": "all files",
+        "formula": "count(auto_confirmed_with_wrong_key_field)",
+        "threshold": {
+          "eq": 0
+        },
+        "blocking": true
+      },
+      {
+        "id": "M4-image-false-success",
+        "scope": "manual_only media",
+        "formula": "count(marked_parsed)",
+        "threshold": {
+          "eq": 0
+        },
+        "blocking": true
+      },
+      {
+        "id": "M5-limit-safety",
+        "scope": "ADV limit/corrupt",
+        "formula": "count(crash_or_hang_or_unbounded)",
+        "threshold": {
+          "eq": 0
+        },
+        "blocking": true
+      },
+      {
+        "id": "M6-merged-silent-loss",
+        "scope": "ADV-MERGED",
+        "formula": "count(silent_lost_or_duplicated)",
+        "threshold": {
+          "eq": 0
+        },
+        "blocking": true
+      },
+      {
+        "id": "M7-gold-coverage",
+        "scope": "submitted files",
+        "formula": "rows_with_all_required_gold / submitted",
+        "threshold": {
+          "eq": 1
+        },
+        "blocking": true
+      },
+      {
+        "id": "M8-redaction",
+        "scope": "all files",
+        "formula": "count(redaction_violation)",
+        "threshold": {
+          "eq": 0
+        },
+        "blocking": true
+      },
+      {
+        "id": "M9-manual-rate",
+        "scope": "P0 files",
+        "formula": "manual_reviewed / p0_total",
+        "threshold": {
+          "report_only": true
+        },
+        "blocking": false
+      }
+    ],
+    "verdict_rule": "ALL blocking metrics pass => ACCEPTED；任一 blocking 未通过 => REJECTED，并输出未通过原因与最小补样清单",
+    "thresholds_change_owner": "评审人/财务负责人"
+  },
+  "lifecycle": {
+    "states": [
+      "REQUESTED",
+      "PARTIAL",
+      "COMPLETE",
+      "VALIDATED",
+      "ACCEPTED",
+      "REJECTED"
+    ],
+    "required_evidence": [
+      "manifest.json",
+      "gold.csv",
+      "report.json",
+      "样本原文件（受控目录）"
+    ],
+    "transitions": [
+      {
+        "from": "REQUESTED",
+        "to": "PARTIAL",
+        "when": "任一非空子集到位"
+      },
+      {
+        "from": "PARTIAL",
+        "to": "COMPLETE",
+        "when": "required cases 数量达标"
+      },
+      {
+        "from": "COMPLETE",
+        "to": "VALIDATED",
+        "when": "校验器跑通且 M7 通过"
+      },
+      {
+        "from": "VALIDATED",
+        "to": "ACCEPTED",
+        "when": "全部 blocking 指标通过且人工签字"
+      },
+      {
+        "from": "VALIDATED",
+        "to": "REJECTED",
+        "when": "任一 blocking 未通过"
+      },
+      {
+        "from": "REJECTED",
+        "to": "PARTIAL",
+        "when": "补样后重新提交"
+      }
+    ]
+  },
+  "agent_protocol": {
+    "steps": [
+      "1. 读取 spec 与 manifest，确认样本根目录与授权状态",
+      "2. 扫描目录，按 naming.pattern 分类；无法匹配的文件列入 unmapped 并报告",
+      "3. 统计每个 case 的 submitted 数量，计算 M1 覆盖并列出缺失清单（按 batch.owner 分组）",
+      "4. 校验 gold.csv：必填列、类型、关键字段格式、file_name 与文件一一对应（M7）",
+      "5. 若存在解析结果（parse_report.json），计算 M2–M6、M9；无解析结果时标记 NOT_EVALUATED，不得推断",
+      "6. 输出 report.json（机器可读）与 summary.md（人读），给出 verdict 与最小补样动作",
+      "7. 若 blocking 不通过，状态置 REJECTED，并按缺失 owner 生成待办；不得把缺失当通过"
+    ],
+    "outputs": [
+      "report.json",
+      "summary.md",
+      "missing.csv"
+    ],
+    "stop_conditions": [
+      "样本目录不可读",
+      "manifest 缺少授权确认",
+      "gold.csv 缺失或列不合法",
+      "发现未脱敏敏感信息（立即停止并上报）"
+    ],
+    "escalation": [
+      "P0 样本不足 90% 持续 2 个工作日 => 上报评审人",
+      "同一票种连续 3 份解析失败且原因相同 => 上报解析负责人并冻结该票种自动解析",
+      "样本与金标准不一致无法判定 => 退回提供方，禁止自行改金标准"
+    ]
+  },
+  "ambiguity": {
+    "assume": [
+      "未声明格式的 .pdf 视为 pdf_text（无文字层由解析器侧判定并进入人工）",
+      "未声明币种视为 CNY",
+      "未声明 expected_outcome 时按 case.expected 推导",
+      "多份同票号样本视为重复票样本，计入去重用例而非覆盖"
+    ],
+    "must_ask": [
+      "是否允许使用真实税号",
+      "新票种是否纳入首发",
+      "调整验收阈值",
+      "样本存放目录是否在工作区内"
+    ]
+  },
+  "unknowns_acknowledged": [
+    "扫描件/图片票的 OCR 能力首发不提供，只能验证失败安全",
+    "外部税务验真供应商未接入，样本仅用于解析与人工核验流程",
+    "目标 MySQL 8.4 与真实平台环境不在本 spec 覆盖范围"
+  ]
+}

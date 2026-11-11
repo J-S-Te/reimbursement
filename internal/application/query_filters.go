@@ -15,6 +15,7 @@ type queryFilters struct {
 	Keyword, Applicant, Project, Status, ClaimType string
 	RouteType                                      string
 	InvoiceType, VerificationStatus, ReviewStatus  string
+	Statuses                                       []string
 	From, Until                                    time.Time
 }
 
@@ -45,7 +46,14 @@ func parseQueryFilters(params map[string]string, kind string) (queryFilters, err
 		"verification_status": "NOT_CHECKED MANUAL_REVIEWED VERIFIED MISMATCH UNAVAILABLE",
 		"review_status":       "PENDING CONFIRMED DISPUTED",
 	}
-	enums["status"] = "DRAFT RETURNED IN_APPROVAL APPROVED_PENDING_PAYMENT PAID VOID"
+	// 单据状态允许逗号分隔多值，单值与任务、票据枚举语义保持不变。
+	if kind == "claims" {
+		statuses, err := claimStatuses(f.Status)
+		if err != nil {
+			return f, err
+		}
+		f.Statuses, f.Status = statuses, ""
+	}
 	if kind == "tasks" {
 		enums["status"] = "WAITING PENDING APPROVED RETURNED TRANSFERRED CANCELLED"
 	}
@@ -66,6 +74,32 @@ func parseQueryFilters(params map[string]string, kind string) (queryFilters, err
 		return f, e
 	}
 	return f, nil
+}
+
+// claimStatuses 将单据状态按逗号拆分为受控多值，空段和非法值一律拒绝。
+// 参数：value 为客户端原值，可为空、单值或逗号分隔的多个状态。
+// 返回值：去重后的合法状态；空值表示不过滤，非法时返回422。
+func claimStatuses(value string) ([]string, error) {
+	if value == "" {
+		return nil, nil
+	}
+	allowed := map[string]bool{
+		"DRAFT": true, "RETURNED": true, "IN_APPROVAL": true,
+		"APPROVED_PENDING_PAYMENT": true, "PAID": true, "VOID": true,
+	}
+	statuses := make([]string, 0, len(allowed))
+	seen := map[string]bool{}
+	for _, part := range strings.Split(value, ",") {
+		status := strings.TrimSpace(part)
+		if !allowed[status] {
+			return nil, domain.Fail("INVALID_QUERY_FILTER", "查询状态或类型不合法：status", 422)
+		}
+		if !seen[status] {
+			seen[status] = true
+			statuses = append(statuses, status)
+		}
+	}
+	return statuses, nil
 }
 
 // parseQueryDates 按北京日解析开始与包含结束日，并校验先后顺序。
@@ -121,7 +155,9 @@ func applyClaimFilters(db, q *gorm.DB, a domain.Actor, f queryFilters) (*gorm.DB
 	if f.Applicant != "" {
 		q = q.Where("applicant = ?", f.Applicant)
 	}
-	if f.Status != "" {
+	if len(f.Statuses) > 0 {
+		q = q.Where("status IN ?", f.Statuses)
+	} else if f.Status != "" {
 		q = q.Where("status = ?", f.Status)
 	}
 	if f.ClaimType != "" {
