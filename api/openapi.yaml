@@ -10536,6 +10536,27 @@
           }
         }
       }
+    },
+    "/internal/v1/settlement/cost-candidates": {
+      "get": {
+        "summary": "专属机器用途读取完整冻结成本候选（1000单/10000行/8MiB，超限整体失败）",
+        "servers": [
+          {
+            "url": "/"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "同RR只读事务完整付款/冲正及冻结费用候选"
+          },
+          "401": {
+            "description": "签名身份不匹配"
+          },
+          "503": {
+            "description": "专用用途未配置、来源失败或完整性上限"
+          }
+        }
+      }
     }
   },
   "components": {
