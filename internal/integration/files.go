@@ -82,7 +82,14 @@ func (f *Files) createUpload(ctx context.Context, actor domain.Actor, resourceID
 	if e = f.DB.WithContext(ctx).Where("tenant_id = ? AND id = ? AND owner = ?", actor.TenantID, resourceID, actor.SubjectID).First(&doc).Error; e != nil {
 		return nil, domain.Fail("RESOURCE_NOT_FOUND", "文件记录不存在", 404)
 	}
-	body := map[string]any{"purpose": u.Purpose, "original_name": u.OriginalName, "media_type": u.MediaType, "size_bytes": u.SizeBytes, "sha256": u.SHA256, "resource_type": "invoice_document", "resource_id": resourceID, "binding_type": "original", "classification": "CONFIDENTIAL", "actor_user_id": actor.SubjectID, "idempotency_key": resourceID + ":" + u.IdempotencyKey}
+	// 网关机器身份只代表报销应用；用户归属由上方本地文档查询和业务绑定承载。
+	// 不声明 actor_user_id，避免将当前用户冒充为机器令牌的已认证主体。
+	body := map[string]any{
+		"purpose": u.Purpose, "original_name": u.OriginalName, "media_type": u.MediaType,
+		"size_bytes": u.SizeBytes, "sha256": u.SHA256, "resource_type": "invoice_document",
+		"resource_id": resourceID, "binding_type": "original", "classification": "CONFIDENTIAL",
+		"idempotency_key": resourceID + ":" + u.IdempotencyKey,
+	}
 	data, e := f.Client.Call(ctx, "POST", "/api/v2/upload-sessions", body)
 	if e != nil {
 		return nil, domain.Fail("FILE_GATEWAY_UNAVAILABLE", "文件上传服务暂不可用", 503)
@@ -194,11 +201,28 @@ func (f *Files) Validate(ctx context.Context, actor domain.Actor, ids []string, 
 			return domain.Fail("FILE_GATEWAY_UNAVAILABLE", "文件服务暂不可用", 503)
 		}
 		var meta fileMetadata
-		if json.Unmarshal(data, &meta) != nil || meta.Status != "READY" || meta.Purpose != purpose {
+		if json.Unmarshal(data, &meta) != nil || meta.Status != "READY" ||
+			!gatewayPurposeMatches(purpose, meta.Purpose) {
 			return domain.Fail("FILE_NOT_READY", "凭证文件未就绪或用途不符", 422)
 		}
 	}
 	return nil
+}
+
+// gatewayPurposeMatches 对照网关用途策略，避免把业务用途键误当作远端存储值。
+// 参数：purpose 为服务端指定的报销用途键；stored 为网关返回的规范用途值。
+// 返回值：仅已知用途精确匹配时为真，未知或跨用途均拒绝。
+func gatewayPurposeMatches(purpose, stored string) bool {
+	switch purpose {
+	case "reimbursement.invoice.original":
+		return stored == "invoice-original"
+	case "reimbursement.payment.voucher":
+		return stored == "payment-voucher"
+	case "reimbursement.claim.evidence":
+		return stored == "claim-evidence"
+	default:
+		return false
+	}
 }
 
 // downloadDocument 在服务端完成对象ACL后申请绑定资源的一次性下载票据。
