@@ -1,6 +1,7 @@
 module github.com/j-s-te/reimbursement
 
 go 1.26.0
+
 toolchain go1.26.11
 
 require (
@@ -88,7 +89,7 @@ require (
 
 require (
 	github.com/J-S-Te/license-core v0.0.0
-	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
