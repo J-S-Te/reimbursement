@@ -16,6 +16,7 @@ type Config struct {
 	Issuer, Backchannel, ClientID, ClientSecret, TenantID, RedirectURI, CookieName                                                   string
 	SessionKey                                                                                                                       []byte
 	Secure, Central                                                                                                                  bool
+	CentralSessionPublicURL                                                                                                          string
 	IdleTTL, AbsoluteTTL                                                                                                             time.Duration
 	ReferenceID, ReferenceSecret, SpendID, SpendSecret, FileID, FileSecret, AuditID, AuditSecret, NotificationID, NotificationSecret string
 	ApplicationID, CatalogID, CatalogSecret                                                                                          string
@@ -76,6 +77,17 @@ func From(get func(string) string) (Config, error) {
 		}
 	}
 	public, _ := url.Parse(c.PublicURL)
+	c.CentralSessionPublicURL = strings.TrimSpace(get("CENTRAL_SESSION_PUBLIC_BASE_URL"))
+	if c.CentralSessionPublicURL == "" {
+		c.CentralSessionPublicURL = public.Scheme + "://" + public.Host
+	}
+	central, centralErr := url.Parse(c.CentralSessionPublicURL)
+	if centralErr != nil || central.Host == "" || central.User != nil ||
+		(central.Scheme != "http" && central.Scheme != "https") ||
+		(central.Path != "" && central.Path != "/") || central.RawQuery != "" || central.Fragment != "" {
+		return c, errors.New("invalid CENTRAL_SESSION_PUBLIC_BASE_URL")
+	}
+	c.CentralSessionPublicURL = central.Scheme + "://" + central.Host
 	callback, _ := url.Parse(c.RedirectURI)
 	if public.Scheme != callback.Scheme || public.Host != callback.Host || !strings.HasSuffix(callback.Path, "/reimbursement/auth/callback") {
 		return c, errors.New("OIDC_REDIRECT_URI must match public reimbursement callback")

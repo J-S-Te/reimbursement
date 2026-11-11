@@ -136,7 +136,7 @@ func RunAPI() error {
 	rawDB, _ := runtime.DB.DB()
 	defer rawDB.Close()
 	cfg := runtime.Config
-	auth, err := identity.NewOIDCAuthenticator(ctx, identity.OIDCOptions{Issuer: cfg.Issuer, BackchannelBaseURL: cfg.Backchannel, PlatformBaseURL: cfg.PlatformURL, ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURI: cfg.RedirectURI, PostLogoutRedirectURI: cfg.PublicURL + "/reimbursement/logged-out", TenantID: cfg.TenantID, ApplicationCode: "reimbursement", EnvironmentCode: cfg.Environment, SessionCookieName: cfg.CookieName, PathPrefix: "/reimbursement", SessionSecure: cfg.Secure, SessionIdleTTL: cfg.IdleTTL, SessionAbsoluteTTL: cfg.AbsoluteTTL, AuthorizationRefreshInterval: time.Minute, AuthorizationMaxStale: time.Minute, AuthorizationTimeout: 8 * time.Second, CentralSessionEnabled: cfg.Central, CentralSessionPublicBaseURL: cfg.PublicURL}, identity.NewGORMOIDCStore(runtime.DB), cfg.SessionKey)
+	auth, err := identity.NewOIDCAuthenticator(ctx, oidcOptions(cfg), identity.NewGORMOIDCStore(runtime.DB), cfg.SessionKey)
 	if err != nil {
 		return errors.New("OIDC initialization failed")
 	}
