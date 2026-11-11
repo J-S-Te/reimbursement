@@ -11,6 +11,7 @@ import (
 )
 
 type Config struct {
+	CostMachine                                                                                                                      CostMachine
 	OwnerID, OwnerSecret                                                                                                             string
 	Address, DSN, PlatformURL, ProjectURL, FileURL, Environment, PublicURL                                                           string
 	Issuer, Backchannel, ClientID, ClientSecret, TenantID, RedirectURI, CookieName                                                   string
@@ -39,6 +40,11 @@ func From(get func(string) string) (Config, error) {
 	c.AuditSecret = get("PLATFORM_AUDIT_CLIENT_SECRET")
 	c.NotificationID = get("PLATFORM_NOTIFICATION_CLIENT_ID")
 	c.NotificationSecret = get("PLATFORM_NOTIFICATION_CLIENT_SECRET")
+	var costErr error
+	c.CostMachine, costErr = CostMachineFrom(get, c.TenantID, c.Environment)
+	if costErr != nil {
+		return c, costErr
+	}
 	c.ApplicationID = get("PLATFORM_AUTHORIZATION_CATALOG_APPLICATION_ID")
 	c.CatalogID = get("PLATFORM_AUTHORIZATION_CATALOG_CLIENT_ID")
 	c.CatalogSecret = get("PLATFORM_AUTHORIZATION_CATALOG_CLIENT_SECRET")

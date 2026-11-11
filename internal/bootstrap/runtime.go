@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/j-s-te/reimbursement/internal/application"
 	"github.com/j-s-te/reimbursement/internal/config"
+	"github.com/j-s-te/reimbursement/internal/costmachine"
 	"github.com/j-s-te/reimbursement/internal/identity"
 	"github.com/j-s-te/reimbursement/internal/integration"
 	"github.com/j-s-te/reimbursement/internal/invoiceparser"
@@ -140,7 +141,11 @@ func RunAPI() error {
 	if err != nil {
 		return errors.New("OIDC initialization failed")
 	}
-	router := httpapi.New(runtime.Service, authorizedMiddleware(auth, runtime))
+	costVerifier, err := costmachine.New(cfg.CostMachine)
+	if err != nil {
+		return errors.New("cost machine verifier initialization failed")
+	}
+	router := httpapi.New(runtime.Service, authorizedMiddleware(auth, runtime), &httpapi.CostMachineOptions{Verifier: costVerifier, CheckLicense: runtime.License.Check})
 	if err = router.SetTrustedProxies(nil); err != nil {
 		return err
 	}

@@ -17,9 +17,9 @@ import (
 type handler struct{ service *application.Service }
 
 // New 装配报销业务 API，所有业务入口均经过可信 RP 会话中间件。
-// 参数：service 为应用服务，authenticate 为必须设置 expense_actor 的认证中间件。
+// 参数：service 为应用服务，authenticate 为必须设置 expense_actor 的认证中间件，costOptions为独立机器用途。
 // 返回值：具有请求边界和统一错误响应的 Gin 引擎。
-func New(service *application.Service, authenticate gin.HandlerFunc) *gin.Engine {
+func New(service *application.Service, authenticate gin.HandlerFunc, costOptions ...*CostMachineOptions) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(func(c *gin.Context) {
@@ -34,6 +34,11 @@ func New(service *application.Service, authenticate gin.HandlerFunc) *gin.Engine
 		c.Next()
 	})
 	h := handler{service: service}
+	var cost *CostMachineOptions
+	if len(costOptions) > 0 {
+		cost = costOptions[0]
+	}
+	h.registerCostCandidates(r, cost)
 	group := r.Group("/api/v1")
 	if authenticate == nil {
 		group.Use(func(c *gin.Context) {
