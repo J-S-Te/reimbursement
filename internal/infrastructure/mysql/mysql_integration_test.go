@@ -47,6 +47,19 @@ func (*mysqlProjects) Search(context.Context, domain.Actor, string, string, int)
 
 type mysqlPersonnel struct{}
 
+// CurrentApplicant 返回并发门禁申请人的明确当前任职。
+// 参数：上下文不访问远端；a 为隔离租户内的当前申请人身份。
+// 返回值：仅测试申请人的组织资料，其他身份返回拒绝。
+func (mysqlPersonnel) CurrentApplicant(_ context.Context, a domain.Actor) (domain.PersonOption, error) {
+	if a.TenantID != "t" || a.SubjectID != "app" {
+		return domain.PersonOption{}, domain.Fail("FORBIDDEN", "测试目录未配置申请人", 403)
+	}
+	return domain.PersonOption{
+		ID: "app", Name: "并发门禁申请人",
+		Organizations: []domain.OrganizationOption{{ID: "org", Name: "隔离测试组织", IsPrimary: true}},
+	}, nil
+}
+
 // VerifyApprover 按真实并发夹具的精确主体和权限核验人员边界。
 // 参数：上下文、当前申请人、目标和节点所需权限。
 // 返回值：未配置的主体或权限返回拒绝。
@@ -87,6 +100,13 @@ func mysqlFixture(t *testing.T, db *gorm.DB) {
 			value any
 		}{"scopes", domain.Scope{ID: "scope-" + subject, SubjectID: subject, OrgIDs: []string{"org"}}})
 	}
+	policies = append(policies, struct {
+		kind  string
+		value any
+	}{"payment_accounts", domain.PaymentAccount{
+		ID: "payment-account", Name: "隔离测试付款账户", FinanceEntityID: "entity",
+		AccountRef: "source", Active: true,
+	}})
 	for _, policy := range policies {
 		raw, e := json.Marshal(policy.value)
 		if e != nil {
