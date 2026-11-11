@@ -859,11 +859,15 @@ func (a *OIDCAuthenticator) cookie(value string, expires time.Time) *http.Cookie
 	return &http.Cookie{Name: a.options.SessionCookieName, Value: value, Path: path, Expires: expires, HttpOnly: true, Secure: a.options.SessionSecure, SameSite: http.SameSiteLaxMode}
 }
 
-// PublicPath 处理报销身份会话及受控协议边界。
-// 参数：path为本应用受控路由。
-// 返回值：当前业务或协议处理结果。
+// PublicPath 用途：为应用内路由补齐公开前缀，保留前端已带前缀的登录返回地址。
+// 参数：path为已经过返回地址校验的业务路径或服务端固定协议路径。
+// 返回值：只包含一次应用前缀的公开路径；不改变原查询参数。
 func (a *OIDCAuthenticator) PublicPath(path string) string {
 	prefix := strings.TrimRight(a.options.PathPrefix, "/")
+	if prefix != "" && (path == prefix || strings.HasPrefix(path, prefix+"/") ||
+		strings.HasPrefix(path, prefix+"?")) {
+		return path
+	}
 	if path == "/" || path == "" {
 		return prefix + "/"
 	}
