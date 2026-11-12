@@ -184,6 +184,38 @@ func verticalPartyRegions(page layoutPage) []partyRegion {
 	return regions
 }
 
+// nextPartyTaxID 解析“标签单独一行、税号在下一行同栏”的常见排版。
+// 只在同一购销方区域、紧邻行、同一起始横坐标范围内取符合税号格式的值，
+// 不把项目明细或其他栏位的号码猜作购销方税号。
+func nextPartyTaxID(line textLine, runIndex int, lines []textLine, regions []partyRegion, kind string) (string, Source) {
+	label := line.Runs[runIndex]
+	for _, next := range lines {
+		if next.Page != line.Page || next.Top <= line.Top || next.Top-line.Top > 40 {
+			continue
+		}
+		inRegion := false
+		for _, region := range regions {
+			if region.kind == kind && next.Top >= region.top && next.Top < region.bottom {
+				inRegion = true
+				break
+			}
+		}
+		if !inRegion {
+			continue
+		}
+		for _, run := range next.Runs {
+			value := compactText(run.Text)
+			if run.Source.X < label.Source.X-5 || run.Source.X > label.Source.X+label.Source.Width+100 {
+				continue
+			}
+			if taxIDPattern.MatchString(value) {
+				return value, run.Source
+			}
+		}
+	}
+	return "", Source{}
+}
+
 // extractPartyFields 仅在唯一购销方区域内解释通用名称和纳税人识别号标签。
 // 参数：c为文件候选，page为页面几何，lines为坐标文字行。
 // 返回值：无；不明确区域作为问题保留，不把通用税号强行归入某方。
@@ -216,6 +248,9 @@ func extractPartyFields(c *Candidate, page layoutPage, lines []textLine) {
 					value, source := labelValue(line.Runs, i, explicit...)
 					if value == "" && len(kinds) == 1 && kinds[kind] {
 						value, source = labelValue(line.Runs, i, field.labels...)
+					}
+					if value == "" && field.suffix == "tax_id" && len(kinds) == 1 && kinds[kind] {
+						value, source = nextPartyTaxID(line, i, lines, regions, kind)
 					}
 					if value == "" {
 						continue
