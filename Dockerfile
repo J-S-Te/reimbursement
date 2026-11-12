@@ -10,7 +10,9 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/reimbursement-api ./cmd/api \
  && CGO_ENABLED=0 go build -trimpath -o /out/reimbursement-authz-catalog ./cmd/authz-catalog
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata \
+ARG APP_VERSION=local
+LABEL org.opencontainers.image.version=${APP_VERSION} com.basic-platform.license.protocol="1"
+RUN apk add --no-cache ca-certificates tzdata poppler-utils \
  && addgroup -S reimbursement && adduser -S -G reimbursement reimbursement \
  && mkdir -p /var/lib/commercial-license \
  && chown reimbursement:reimbursement /var/lib/commercial-license

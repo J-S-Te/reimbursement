@@ -95,7 +95,33 @@ func (p *Parser) parsePDF(ctx context.Context, data []byte) (Result, error) {
 		}
 		pages = append(pages, current)
 	}
-	return adaptPDFPages(ctx, pages)
+	result, adaptErr := adaptPDFPages(ctx, pages)
+	// 锁定库对部分 CID/ToUnicode 字体只回传原始字形码，适配结果没有任何中文票面字段。
+	// 此类 PDF 用 pdftotext 的词框再适配一次；后备不可用时保留锁定库原结果/错误。
+	if adaptErr == nil && pdfPagesHaveUsableText(pages) {
+		return result, nil
+	}
+	if adaptErr != nil && adaptErr.Error() != "NO_USABLE_TEXT_LAYER" {
+		return result, adaptErr
+	}
+	if popplerPages, popplerErr := popplerPDFPages(ctx, data); popplerErr == nil {
+		// 后备提取器也不能绕过页数硬上限；否则锁定库误判页数时可由外部工具放大处理量。
+		if len(popplerPages) > p.limits.MaxPages {
+			return Result{}, errors.New("PDF_PAGE_LIMIT")
+		}
+		// pdftotext 的 bbox-layout 不提供 /Rotate；页数一致时沿用锁定库已解析的旋转，
+		// 旋转页仍需人工复核，不能静默当成正向票据。
+		if len(popplerPages) == len(pages) {
+			for i := range popplerPages {
+				popplerPages[i].Rotation = pages[i].Rotation
+			}
+		}
+		if popplerResult, popplerAdaptErr := adaptPDFPages(ctx, popplerPages); popplerAdaptErr == nil {
+			popplerResult.ParserVersion += "+poppler"
+			return popplerResult, nil
+		}
+	}
+	return result, adaptErr
 }
 
 // rebuildTextLines 按原始PDF用户空间坐标重建文字行及相隔较远的字段区域。
@@ -130,7 +156,13 @@ func rebuildTextLines(page layoutPage) []textLine {
 				continue
 			}
 			n := len(line.Runs)
-			if n == 0 || glyph.X-(line.Runs[n-1].Source.X+line.Runs[n-1].Source.Width) > math.Max(18, glyph.Height*2) {
+			// pdftotext 的词框已按空白分词；后备路径不应再按锁定库的大间距阈值合并，
+			// 否则「合计金额 / 税额合计 / 价税合计」会重新粘成一个 run 并互相污染金额。
+			mergeThreshold := math.Max(18, glyph.Height*2)
+			if glyph.Method == pdfPopplerMethod {
+				mergeThreshold = math.Max(2, glyph.Height*.3)
+			}
+			if n == 0 || glyph.X-(line.Runs[n-1].Source.X+line.Runs[n-1].Source.Width) > mergeThreshold {
 				line.Runs = append(line.Runs, textRun{Text: text, Source: glyph})
 				continue
 			}
