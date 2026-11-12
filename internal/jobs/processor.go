@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	core "github.com/J-S-Te/license-core"
+	"github.com/oklog/ulid/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -90,8 +91,22 @@ func (p *Processor) Outbox(ctx context.Context, row Record) error {
 		}
 	case "audit":
 		trace := sha256.Sum256([]byte(row.EventID))
-		payload := map[string]any{"event_id": row.EventID, "occurred_at": row.CreatedAt.UTC().Format(time.RFC3339Nano), "application_code": "reimbursement", "environment_code": p.Environment, "actor_id": data["actor_subject_id"], "actor_type": auditActorType(data), "action": data["action"], "resource_type": "expense", "resource_id": row.ResourceID, "result": auditResult(data), "risk_level": "MEDIUM", "request_id": auditRequestID(data, row.EventID), "trace_id": hex.EncodeToString(trace[:16]), "correlation_id": data["command_id"]}
-		_, err = p.Audit.Call(ctx, "POST", "/api/v1/audit/events", payload)
+		traceID := hex.EncodeToString(trace[:16])
+		requestID := auditRequestID(data, row.EventID)
+		correlationID := auditCorrelationID(data, row.EventID)
+		payload := map[string]any{"event_id": auditEventID(row.EventID), "occurred_at": row.CreatedAt.UTC().Format(time.RFC3339Nano), "application_code": "reimbursement", "environment_code": p.Environment, "actor_id": data["actor_subject_id"], "actor_type": auditActorType(data), "action": data["action"], "resource_type": "expense", "resource_id": row.ResourceID, "result": auditResult(data), "risk_level": "MEDIUM", "request_id": requestID, "trace_id": traceID, "correlation_id": correlationID}
+		// 单事件摄取要求审计体中的 request/trace/correlation 与传输头精确一致；
+		// 不携带这些头会被平台按 422 拒绝，导致 outbox 长期重试并丢掉审计证据。
+		spanID := hex.EncodeToString(trace[16:24])
+		if spanID == "0000000000000000" {
+			spanID = "0000000000000001"
+		}
+		headers := map[string]string{
+			"X-Request-ID":     requestID,
+			"X-Correlation-ID": correlationID,
+			"traceparent":      "00-" + traceID + "-" + spanID + "-01",
+		}
+		_, err = p.Audit.CallWithHeaders(ctx, "POST", "/api/v1/audit/events", payload, headers)
 	case "notification":
 		if data["kind"] == "APPROVAL_REMINDER" {
 			deliverable, checkErr := p.ApprovalReminderDeliverable(ctx, row, data)
@@ -213,6 +228,29 @@ func (p *Processor) parse(ctx context.Context, row Record) (err error) {
 func auditRequestID(payload map[string]any, fallback string) string {
 	if value, ok := payload["request_id"].(string); ok && value != "" && len(value) <= 128 && !strings.ContainsAny(value, "\r\n") {
 		return value
+	}
+	return fallback
+}
+
+// auditEventID 从持久化 outbox 事件 ID 派生稳定 ULID。
+// 参数：raw 为 outbox 事件 ID。
+// 返回值：审计平台接受的 26 位 ULID；重试时保持一致以支持幂等。
+func auditEventID(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	var id ulid.ULID
+	copy(id[:], sum[:16])
+	return id.String()
+}
+
+// auditCorrelationID 返回与审计请求头一致的操作级关联标识。
+// 参数：payload为事务内载荷，fallback为事件ID。
+// 返回值：非空且无控制字符的命令标识；缺失时退回事件ID。
+func auditCorrelationID(payload map[string]any, fallback string) string {
+	if value, ok := payload["command_id"].(string); ok {
+		value = strings.TrimSpace(value)
+		if value != "" && len(value) <= 128 && !strings.ContainsAny(value, "\r\n") {
+			return value
+		}
 	}
 	return fallback
 }

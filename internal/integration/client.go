@@ -92,6 +92,17 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 // 参数：ctx 为调用边界；method/path为固定协议路径；input为服务端组装报文。
 // 返回值：data字段；拒绝重定向、非JSON、超限及非成功响应。
 func (c *Client) Call(ctx context.Context, method, path string, input any) (json.RawMessage, error) {
+	return c.call(ctx, method, path, input, nil)
+}
+
+// CallWithHeaders 在受控调用上追加固定协议头。
+// 参数：ctx 为调用边界；method/path为固定协议路径；input为报文；headers为可信传输头。
+// 返回值：同 Call；头由调用方按目标协议严格构造，不接受外部请求透传。
+func (c *Client) CallWithHeaders(ctx context.Context, method, path string, input any, headers map[string]string) (json.RawMessage, error) {
+	return c.call(ctx, method, path, input, headers)
+}
+
+func (c *Client) call(ctx context.Context, method, path string, input any, headers map[string]string) (json.RawMessage, error) {
 	token, err := c.Token(ctx)
 	if err != nil {
 		return nil, err
@@ -113,6 +124,9 @@ func (c *Client) Call(ctx context.Context, method, path string, input any) (json
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, ErrUnavailable
