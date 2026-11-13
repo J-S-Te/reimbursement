@@ -62,6 +62,7 @@ type OIDCStore interface {
 	CreateSession(context.Context, StoredOIDCSession) error
 	FindSession(context.Context, []byte, time.Time) (StoredOIDCSession, error)
 	UpdateSession(context.Context, StoredOIDCSession, time.Time) error
+	TouchSessionLastSeen(context.Context, []byte, time.Time) error
 	// TouchSessionActivity 在会话仍满足绝对期限与空闲截止（idleCutoff）时推进
 	// last_interactive_at 与 last_seen_at；已过期/撤销会话不得被复活。
 	TouchSessionActivity(context.Context, []byte, time.Time, time.Time) error
@@ -186,6 +187,29 @@ func (s *GORMOIDCStore) FindSession(ctx context.Context, hash []byte, now time.T
 // UpdateSession 处理报销身份会话及受控协议边界。
 // 参数：ctx为调用取消与超时边界；value为待校验或持久化的协议业务值；now为本次服务端校验UTC时间。
 // 返回值：处理结果及校验、存储或依赖失败错误。
+// TouchSessionLastSeen 只推进普通已认证请求的观测时间，避免每个业务请求重写令牌/主体密文。
+// 参数：ctx为请求上下文，hash为会话Cookie哈希，now为服务端当前时间。
+// 返回值：会话已撤销或绝对到期返回错误；同毫秒 no-op 写入通过复核区分，不误判登出。
+func (s *GORMOIDCStore) TouchSessionLastSeen(ctx context.Context, hash []byte, now time.Time) error {
+	result := s.db.WithContext(ctx).Model(&oidcSessionRecord{}).
+		Where("session_id_hash = ? AND revoked_at IS NULL AND session_expires_at > ?", hash, now).
+		Update("last_seen_at", now)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 1 {
+		return nil
+	}
+	var row oidcSessionRecord
+	err := s.db.WithContext(ctx).Select("session_id_hash").
+		Where("session_id_hash = ? AND revoked_at IS NULL AND session_expires_at > ?", hash, now).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return errOIDCRecordNotFound
+	}
+	return err
+}
+
 func (s *GORMOIDCStore) UpdateSession(ctx context.Context, value StoredOIDCSession, now time.Time) error {
 	record := sessionRecord(value)
 	updates := map[string]any{
