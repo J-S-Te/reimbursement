@@ -89,7 +89,12 @@ func canonicalDate(raw string) string {
 // 参数：c为收集完候选的票据。
 // 返回值：无；冲突及必要字段缺失作为问题码附加。
 func resolveFields(c *Candidate) {
-	targets := map[string]*string{"invoice_type": &c.InvoiceType, "invoice_number": &c.Number, "invoice_code": &c.Code, "invoice_date": &c.Date, "buyer_name": &c.BuyerName, "buyer_tax_id": &c.BuyerTaxID, "seller_name": &c.SellerName, "seller_tax_id": &c.SellerTaxID, "amount_minor": &c.AmountMinor, "tax_minor": &c.TaxMinor, "gross_minor": &c.GrossMinor}
+	targets := map[string]*string{
+		"invoice_type": &c.InvoiceType, "invoice_number": &c.Number, "invoice_code": &c.Code,
+		"invoice_date": &c.Date, "buyer_name": &c.BuyerName, "buyer_tax_id": &c.BuyerTaxID,
+		"seller_name": &c.SellerName, "seller_tax_id": &c.SellerTaxID, "issuer": &c.Issuer,
+		"amount_minor": &c.AmountMinor, "tax_minor": &c.TaxMinor, "gross_minor": &c.GrossMinor,
+	}
 	for field, target := range targets {
 		values := c.FieldCandidates[field]
 		*target = ""

@@ -5,7 +5,7 @@ import (
 	"github.com/j-s-te/reimbursement/internal/domain"
 )
 
-// commandResourceBounds 在文件、项目或人员网络预检前拒绝超限凭证集合。
+// commandResourceBounds 用途：在文件、项目或人员网络预检前拒绝超限凭证集合。
 // 参数：operation 为固定服务端动作，payload 为命令内容。
 // 返回值：参数格式错误或资源超限错误。
 func commandResourceBounds(operation string, payload json.RawMessage) error {
@@ -41,6 +41,9 @@ func commandResourceBounds(operation string, payload json.RawMessage) error {
 			return e
 		}
 		ids = input.VoucherFileIDs
+		if len(ids) == 0 || len(ids) > 20 {
+			return paymentFieldFailure("FILE_REFERENCE_LIMIT", "voucher_file_ids", "付款凭证请选择1至20份已上传附件，请核对后再登记")
+		}
 	case "reversal.request":
 		var input ReversalInput
 		if e := json.Unmarshal(payload, &input); e != nil {

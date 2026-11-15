@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm/clause"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -64,7 +63,7 @@ type ReversalData struct {
 	ClaimVersion        int64    `json:"claim_version"`
 }
 
-// recordPayment 原子登记唯一有效全额付款及完整项目支出快照。
+// recordPayment 用途：原子登记唯一有效全额付款及完整项目支出快照。
 // 参数：tx 为事务，cc 为独立出纳命令，payload 为线下付款事实。
 // 返回值：冻结付款回执、单据与错误。
 func (s *Service) recordPayment(tx *gorm.DB, cc *commandContext, payload json.RawMessage) (any, string, error) {
@@ -128,17 +127,8 @@ func (s *Service) recordPayment(tx *gorm.DB, cc *commandContext, payload json.Ra
 	if incomplete != 0 {
 		return nil, "", domain.Fail("APPROVAL_INCOMPLETE", "审批任务尚未全部完成", 409)
 	}
-	if input.Amount <= 0 || input.Amount != c.Payable || input.Currency != c.Currency || input.PayeeProfileID != c.PayeeProfileID {
-		return nil, "", domain.Fail("PAYMENT_MISMATCH", "付款金额、币种及收款资料必须与批准快照完全一致", 422)
-	}
-	if _, e = time.Parse("2006-01-02", input.PaidDate); e != nil {
-		return nil, "", domain.Fail("INVALID_DATE", "付款日期格式不正确", 422)
-	}
-	if input.Method != "BANK" && input.Method != "CASH" {
-		return nil, "", domain.Fail("INVALID_PAYMENT_METHOD", "仅支持银行或现金登记", 422)
-	}
-	if input.SourceAccountRef == "" || strings.TrimSpace(input.TransactionNo) == "" || len(input.TransactionNo) > 128 || len(input.SourceAccountRef) > 128 || len(input.VoucherFileIDs) == 0 || len(input.VoucherFileIDs) > 20 {
-		return nil, "", domain.Fail("PAYMENT_EVIDENCE_REQUIRED", "请填写来源账户、流水或现金凭证号及付款附件", 422)
+	if e = validatePaymentFields(input, c); e != nil {
+		return nil, "", e
 	}
 	// 与目录退休、替换串行，防止账户校验通过后被并发停用仍落入新付款。
 	if e = lockPolicyTenant(tx, c.TenantID); e != nil {

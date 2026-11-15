@@ -54,16 +54,21 @@ func popplerBinary() (string, error) {
 	return "", errors.New("PDF_POPPLER_UNAVAILABLE")
 }
 
-// pdfPagesHaveUsableText 判定锁定库提取结果是否值得直接进入字段适配。
-// 全角/汉字丢失、替换符或控制字符过多时必须尝试具备 ToUnicode 能力的后备提取器；
-// 纯英文文本不是本子系统的票面输入，不需要为它额外启动外部进程。
+// pdfPagesHaveUsableText 判断字形编码和宽度是否足以支持票面布局解析。
+// 参数：pages 为锁定库提取的页面字形和原始几何。
+// 返回值：中文、编码及宽度可用时为真；否则尝试已有的后备提取器。
 func pdfPagesHaveUsableText(pages []layoutPage) bool {
 	runes, invalid, han := 0, 0, 0
+	glyphs, missingWidths := 0, 0
 	for _, page := range pages {
 		for _, glyph := range page.Glyphs {
 			text := strings.TrimSpace(glyph.Text)
 			if text == "" {
 				continue
+			}
+			glyphs++
+			if glyph.Width <= 0 {
+				missingWidths++
 			}
 			for _, r := range text {
 				runes++
@@ -79,7 +84,8 @@ func pdfPagesHaveUsableText(pages []layoutPage) bool {
 	if runes < 10 || han == 0 {
 		return false
 	}
-	return invalid*20 <= runes
+	// 缺失字宽的字体也可能返回倒序税号；不能仅因包含汉字就采信该布局。
+	return invalid*20 <= runes && missingWidths*2 <= glyphs
 }
 
 // popplerPDFPages 通过 pdftotext 的 bbox-layout XHTML 读取词框。

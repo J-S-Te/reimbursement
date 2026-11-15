@@ -251,6 +251,9 @@ func ofdFieldName(name, xmlPath string) string {
 		details := map[string]string{"Item": "detail.name", "Name": "detail.name", "Specification": "detail.model", "Model": "detail.model", "Unit": "detail.unit", "Quantity": "detail.quantity", "Price": "detail.unit_price", "Amount": "detail.amount", "TaxScheme": "detail.tax_rate", "TaxRate": "detail.tax_rate", "TaxAmount": "detail.tax"}
 		return details[name]
 	}
+	if name == "Drawer" {
+		return "issuer"
+	}
 	fields := map[string]string{"InvoiceCode": "invoice_code", "InvoiceNo": "invoice_number", "InvoiceNumber": "invoice_number", "ElectronicInvoiceRailwayETicketNumber": "invoice_number", "IssueDate": "invoice_date", "DateOfIssue": "invoice_date", "BuyerName": "buyer_name", "NameOfPurchaser": "buyer_name", "BuyerTaxID": "buyer_tax_id", "UnifiedSocialCreditCodeOfPurchaser": "buyer_tax_id", "SellerName": "seller_name", "IssueParty": "seller_name", "SellerTaxID": "seller_tax_id", "IssuePartyCode": "seller_tax_id", "TaxExclusiveTotalAmount": "amount_minor", "TotalAmountExcludingTax": "amount_minor", "TaxTotalAmount": "tax_minor", "TaxInclusiveTotalAmount": "gross_minor", "Fare": "gross_minor"}
 	if name == "TaxAmount" && !strings.Contains(xmlPath, "/GoodsInfos[") {
 		return "tax_minor"

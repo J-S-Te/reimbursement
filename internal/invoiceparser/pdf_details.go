@@ -12,21 +12,35 @@ type detailColumn struct {
 	x    float64
 }
 
-// detailColumns 识别同一行具有名称及金额的明细表头坐标。
+// detailColumns 合并分字表头并识别名称与金额列的中心坐标。
 // 参数：line为单页文字行。
 // 返回值：从左到右的明确列；没有足够表头时返回空。
 func detailColumns(line textLine) []detailColumn {
 	aliases := map[string]string{"项目名称": "name", "货物或应税劳务、服务名称": "name", "货物或应税劳务名称": "name", "规格型号": "model", "单位": "unit", "数量": "quantity", "单价": "unit_price", "金额": "amount", "税率": "tax_rate", "税率/征收率": "tax_rate", "税额": "tax"}
 	columns := []detailColumn{}
 	hasName, hasAmount := false, false
-	for _, run := range line.Runs {
-		kind, ok := aliases[compactText(run.Text)]
-		if !ok {
-			continue
+	for i := 0; i < len(line.Runs); i++ {
+		first, text := line.Runs[i], ""
+		for j := i; j < len(line.Runs) && j < i+4; j++ {
+			run := line.Runs[j]
+			if j > i {
+				previous := line.Runs[j-1].Source
+				if run.Source.X-previous.X-previous.Width > math.Max(20, run.Source.Height*2) {
+					break
+				}
+			}
+			text += compactText(run.Text)
+			kind, ok := aliases[text]
+			if !ok {
+				continue
+			}
+			center := (first.Source.X + run.Source.X + run.Source.Width) / 2
+			columns = append(columns, detailColumn{kind: kind, x: center})
+			hasName = hasName || kind == "name"
+			hasAmount = hasAmount || kind == "amount"
+			i = j
+			break
 		}
-		columns = append(columns, detailColumn{kind: kind, x: run.Source.X})
-		hasName = hasName || kind == "name"
-		hasAmount = hasAmount || kind == "amount"
 	}
 	if !hasName || !hasAmount {
 		return nil
@@ -44,7 +58,7 @@ func detailCells(line textLine, columns []detailColumn) (map[string]string, []So
 	for _, run := range line.Runs {
 		best, distance := -1, math.MaxFloat64
 		for i, column := range columns {
-			d := math.Abs(run.Source.X - column.x)
+			d := math.Abs(run.Source.X + run.Source.Width/2 - column.x)
 			if d < distance {
 				best, distance = i, d
 			}
@@ -94,9 +108,11 @@ func detailFromCells(c *Candidate, values map[string]string, sources []Source) D
 // 返回值：无；不完整行保留明细问题，页间关系仍由候选组人工确认。
 func extractDetailLines(c *Candidate, lines []textLine) {
 	var columns []detailColumn
+	previousTop := 0.0
 	for _, line := range lines {
 		if header := detailColumns(line); len(header) > 0 {
 			columns = header
+			previousTop = 0
 			continue
 		}
 		if len(columns) == 0 {
@@ -111,20 +127,13 @@ func extractDetailLines(c *Candidate, lines []textLine) {
 			continue
 		}
 		values, sources := detailCells(line, columns)
-		if strings.Trim(values["name"], " :：") == "合计" {
-			for _, spec := range []struct{ column, field string }{{"amount", "amount_minor"}, {"tax", "tax_minor"}} {
-				if values[spec.column] != "" {
-					source := Source{Page: line.Page, Text: values[spec.column], Method: "PDF_TABLE_TOTAL", Region: "detail_total"}
-					for _, s := range sources {
-						if s.Field == "detail."+spec.column {
-							source = s
-							break
-						}
-					}
-					addMoneyField(c, spec.field, values[spec.column], source)
-				}
-			}
+		if compactText(values["name"]+values["model"]) == "合计" {
+			addTableTotals(c, values, sources)
 			columns = nil
+			continue
+		}
+		if previousTop > 0 && appendWrappedDetail(c, values, sources, line.Top-previousTop) {
+			previousTop = line.Top
 			continue
 		}
 		if values["name"] == "" {
@@ -136,5 +145,55 @@ func extractDetailLines(c *Candidate, lines []textLine) {
 			detail.Issues = append(detail.Issues, "INCOMPLETE_OR_WRAPPED_DETAIL_REQUIRES_REVIEW")
 		}
 		c.DetailLines = append(c.DetailLines, detail)
+		previousTop = line.Top
 	}
+}
+
+// addTableTotals 将明确“合计”行中的金额与税额按列保存为汇总候选。
+// 参数：c 为票据候选，values 为列文字，sources 为该行实际坐标来源。
+// 返回值：无；缺失列保持缺失，冲突仍由统一候选规则处理。
+func addTableTotals(c *Candidate, values map[string]string, sources []Source) {
+	for _, spec := range []struct{ column, field string }{
+		{"amount", "amount_minor"}, {"tax", "tax_minor"},
+	} {
+		if values[spec.column] == "" {
+			continue
+		}
+		for _, source := range sources {
+			if source.Field == "detail."+spec.column {
+				addMoneyField(c, spec.field, values[spec.column], source)
+				break
+			}
+		}
+	}
+}
+
+// appendWrappedDetail 仅将紧邻且能闭合上一项括号的名称续行接回原明细。
+// 参数：c 为已读候选，values/sources 为当前行，gap 为与上一行的垂直距离。
+// 返回值：确定为续行时返回真；含数字列、跨段或无续写证据时保持独立明细。
+func appendWrappedDetail(c *Candidate, values map[string]string, sources []Source, gap float64) bool {
+	if len(c.DetailLines) == 0 || gap <= 0 || gap > 20 || values["name"] == "" {
+		return false
+	}
+	if strings.HasPrefix(strings.TrimSpace(values["name"]), "*") {
+		return false
+	}
+	for kind, value := range values {
+		if kind != "name" && kind != "model" && value != "" {
+			return false
+		}
+	}
+	previous := &c.DetailLines[len(c.DetailLines)-1]
+	if previous.AmountMinor == "" ||
+		strings.Count(previous.Name, "(") <= strings.Count(previous.Name, ")") {
+		return false
+	}
+	joinedName := previous.Name + values["name"]
+	if strings.Count(joinedName, "(") != strings.Count(joinedName, ")") {
+		return false
+	}
+	previous.Name = joinedName
+	previous.Model += values["model"]
+	previous.Sources = append(previous.Sources, sources...)
+	return true
 }

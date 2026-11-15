@@ -55,6 +55,9 @@ func extractHeaderFields(c *Candidate, lines []textLine) {
 			if !strings.ContainsAny(text, "0123456789:") && strings.Contains(text, "发票") && (strings.Contains(text, "专用") || strings.Contains(text, "普通") || strings.Contains(text, "电子")) {
 				addField(c, "invoice_type", text, run.Text, run.Source)
 			}
+			if value, source := labelValue(line.Runs, i, "开票人"); value != "" {
+				addField(c, "issuer", value, value, source)
+			}
 			for _, spec := range []struct {
 				field   string
 				labels  []string
@@ -282,7 +285,9 @@ func extractTotals(c *Candidate, lines []textLine) {
 			}{
 				{"amount_minor", []string{"不含税金额", "合计金额", "金额合计"}},
 				{"tax_minor", []string{"税额合计", "合计税额"}},
-				{"gross_minor", []string{"价税合计(小写)", "价税合计（小写）", "价税合计", "小写"}},
+				{"gross_minor", []string{
+					"价税合计(小写)", "价税合计（小写）", "价税合计", "(小写)", "小写",
+				}},
 			} {
 				value, source := labelValue(line.Runs, i, spec.labels...)
 				if value == "" {

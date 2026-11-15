@@ -246,7 +246,7 @@ func reserveInvoices(tx *gorm.DB, c *domain.Claim) error {
 	return validateClaimInvoices(tx, c, true)
 }
 
-// validateClaimInvoices 复用正式票据校验，预览分支只读取事实。
+// validateClaimInvoices 用途：复用正式票据校验，预览分支只读取事实。
 // 参数：tx 为业务数据库，c 为重算草稿，reserve 决定是否实际锁定和占用票据。
 // 返回值：票据、日期、主体或并发校验错误。
 func validateClaimInvoices(tx *gorm.DB, c *domain.Claim, reserve bool) error {
@@ -276,12 +276,15 @@ func validateClaimInvoices(tx *gorm.DB, c *domain.Claim, reserve bool) error {
 		if e := query.First(&row).Error; e != nil {
 			return domain.Fail("INVOICE_NOT_AVAILABLE", "发票不存在或无权使用", 422)
 		}
+		if row.Owner != c.Applicant {
+			return domain.Fail("INVOICE_NOT_AVAILABLE", "发票不存在或无权使用", 422)
+		}
 		var inv domain.Invoice
 		if e := json.Unmarshal([]byte(row.ContentJSON), &inv); e != nil {
 			return e
 		}
-		if row.Owner != c.Applicant || inv.ReviewStatus != "CONFIRMED" || inv.VerificationStatus == "MISMATCH" || row.IdentityKey == nil || used[id] > inv.Total {
-			return domain.Fail("INVOICE_NOT_AVAILABLE", "发票未确认或本单使用额超过票面金额", 422)
+		if err := invoiceUseStateFailure(row, inv, used[id]); err != nil {
+			return invoiceUsageFailure(*c, id, err)
 		}
 		rule, ruleErr := invoiceRule(tx, c.TenantID, inv.InvoiceType)
 		if ruleErr != nil {
@@ -289,19 +292,19 @@ func validateClaimInvoices(tx *gorm.DB, c *domain.Claim, reserve bool) error {
 		}
 		warning, dateErr := invoiceDateWarning(inv, rule, checkedAt)
 		if dateErr != nil {
-			return dateErr
+			return invoiceUsageFailure(*c, id, dateErr)
 		}
 		if warning != nil {
 			c.InvoiceDateWarnings = append(c.InvoiceDateWarnings, *warning)
 		}
 		if rule.RequiredExternalVerification && inv.VerificationStatus != "VERIFIED" {
-			return domain.Fail("INVOICE_EXTERNAL_VERIFICATION_REQUIRED", "此票种政策要求正式外部查验结果", 422)
+			return invoiceUsageFailure(*c, id, domain.Fail("INVOICE_EXTERNAL_VERIFICATION_REQUIRED", "此票种政策要求正式外部查验结果，请先取得有效查验结果后再提交", 422))
 		}
 		if (rule.RequiredBuyerTaxID && inv.BuyerTaxID == "") || (inv.BuyerTaxID != "" && inv.BuyerTaxID != entity.TaxID) {
-			return domain.Fail("INVOICE_BUYER_MISMATCH", "发票购买方与报销主体不匹配", 422)
+			return invoiceUsageFailure(*c, id, domain.Fail("INVOICE_BUYER_MISMATCH", "发票购买方与报销主体不匹配，请核对票面购买方及本单财务主体", 422))
 		}
 		if row.ReservationClaimID != "" && row.ReservationClaimID != c.ID {
-			return domain.Fail("INVOICE_RESERVED", "发票已被其他申请占用，不能跨单拆票", 409)
+			return invoiceUsageFailure(*c, id, domain.Fail("INVOICE_RESERVED", "发票已被其他申请占用，不能跨单拆票；请核对本人其他申请或更换可用票据", 409))
 		}
 		if row.ReservationState == "CONSUMED" && !consumedChecked {
 			if e := consumedEvidenceReapproval(tx, *c); e != nil {
@@ -317,7 +320,7 @@ func validateClaimInvoices(tx *gorm.DB, c *domain.Claim, reserve bool) error {
 			return r.Error
 		}
 		if r.RowsAffected != 1 {
-			return domain.Fail("INVOICE_RESERVED", "发票状态已被并发更新", 409)
+			return invoiceUsageFailure(*c, id, domain.Fail("INVOICE_RESERVED", "发票状态已被并发更新，请刷新票据状态后核对使用情况", 409))
 		}
 	}
 	if !reserve {

@@ -16,7 +16,7 @@ const (
 	hardMaxBytes         = 20 << 20
 	hardMaxExpandedBytes = 100 << 20
 	hardMaxPages         = 100
-	rulesVersion         = "expense-invoice-v3"
+	rulesVersion         = "expense-invoice-v4"
 	normalizationVersion = "invoice-text-nfwidth-v1"
 )
 
@@ -76,6 +76,7 @@ type Candidate struct {
 	BuyerTaxID         string                  `json:"buyer_tax_id"`
 	SellerName         string                  `json:"seller_name"`
 	SellerTaxID        string                  `json:"seller_tax_id"`
+	Issuer             string                  `json:"issuer,omitempty"`
 	GrossMinor         string                  `json:"gross_minor"`
 	AmountMinor        string                  `json:"amount_minor,omitempty"`
 	TaxMinor           string                  `json:"tax_minor,omitempty"`

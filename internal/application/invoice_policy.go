@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"time"
 
@@ -41,7 +42,7 @@ func decodeInvoicePolicy(raw string) (domain.InvoicePolicy, error) {
 	return rule, nil
 }
 
-// invoiceDateWarning 用可信北京时间检查发票年龄，不采用客户端传入的风险结论。
+// invoiceDateWarning 用途：用可信北京时间检查发票年龄，不采用客户端传入的风险结论。
 // 参数：inv 为已确认票据，rule 为发布政策，now 为可信服务端时间。
 // 返回值：超期 WARN 的冻结事实；非法、未来日期或 BLOCK 超期返回 422。
 func invoiceDateWarning(inv domain.Invoice, rule domain.InvoicePolicy, now time.Time) (*domain.InvoiceDateWarning, error) {
@@ -52,7 +53,7 @@ func invoiceDateWarning(inv domain.Invoice, rule domain.InvoicePolicy, now time.
 	day := now.In(zone).Format("2006-01-02")
 	date, err := time.ParseInLocation("2006-01-02", inv.InvoiceDate, zone)
 	if err != nil || inv.InvoiceDate > day {
-		return nil, domain.Fail("INVOICE_DATE_INVALID", "发票日期无效或晚于当前北京业务日", 422)
+		return nil, domain.Fail("INVOICE_DATE_INVALID", "发票日期无效或晚于当前北京业务日，请对照原件核对开票日期", 422)
 	}
 	today, _ := time.ParseInLocation("2006-01-02", day, zone)
 	age := int(today.Sub(date) / (24 * time.Hour))
@@ -60,7 +61,9 @@ func invoiceDateWarning(inv domain.Invoice, rule domain.InvoicePolicy, now time.
 		return nil, nil
 	}
 	if rule.DatePolicy != "WARN" {
-		return nil, domain.Fail("INVOICE_DATE_EXPIRED", "发票已超过当前票种允许的有效天数", 422)
+		message := fmt.Sprintf("发票已超过当前票种允许的%d天，请核对开票日期及适用票种政策；"+
+			"仍需报销时联系财务管理员", rule.MaxInvoiceAgeDays)
+		return nil, domain.Fail("INVOICE_DATE_EXPIRED", message, 422)
 	}
 	return &domain.InvoiceDateWarning{
 		InvoiceID: inv.ID, RuleID: rule.ID, RuleVersion: rule.Version,
