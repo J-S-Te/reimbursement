@@ -254,7 +254,7 @@ func ofdFieldName(name, xmlPath string) string {
 	if name == "Drawer" {
 		return "issuer"
 	}
-	fields := map[string]string{"InvoiceCode": "invoice_code", "InvoiceNo": "invoice_number", "InvoiceNumber": "invoice_number", "ElectronicInvoiceRailwayETicketNumber": "invoice_number", "IssueDate": "invoice_date", "DateOfIssue": "invoice_date", "BuyerName": "buyer_name", "NameOfPurchaser": "buyer_name", "BuyerTaxID": "buyer_tax_id", "UnifiedSocialCreditCodeOfPurchaser": "buyer_tax_id", "SellerName": "seller_name", "IssueParty": "seller_name", "SellerTaxID": "seller_tax_id", "IssuePartyCode": "seller_tax_id", "TaxExclusiveTotalAmount": "amount_minor", "TotalAmountExcludingTax": "amount_minor", "TaxTotalAmount": "tax_minor", "TaxInclusiveTotalAmount": "gross_minor", "Fare": "gross_minor"}
+	fields := map[string]string{"InvoiceNo": "invoice_number", "InvoiceNumber": "invoice_number", "ElectronicInvoiceRailwayETicketNumber": "invoice_number", "IssueDate": "invoice_date", "DateOfIssue": "invoice_date", "BuyerName": "buyer_name", "NameOfPurchaser": "buyer_name", "BuyerTaxID": "buyer_tax_id", "UnifiedSocialCreditCodeOfPurchaser": "buyer_tax_id", "SellerName": "seller_name", "IssueParty": "seller_name", "SellerTaxID": "seller_tax_id", "IssuePartyCode": "seller_tax_id", "TaxExclusiveTotalAmount": "amount_minor", "TotalAmountExcludingTax": "amount_minor", "TaxTotalAmount": "tax_minor", "TaxInclusiveTotalAmount": "gross_minor", "Fare": "gross_minor"}
 	if name == "TaxAmount" && !strings.Contains(xmlPath, "/GoodsInfos[") {
 		return "tax_minor"
 	}

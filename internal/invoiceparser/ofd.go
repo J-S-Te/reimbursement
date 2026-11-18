@@ -108,7 +108,7 @@ func partialOFDResult(c Candidate, inventory ofdInventory, result Result, cause 
 func addOFDLibraryFields(c *Candidate, invoice *ofd.Invoice) {
 	source := Source{XMLPath: invoice.Attachment, Method: "OFD_LIBRARY_ATTACHMENT_OR_CUSTOM_TAG"}
 	for _, item := range []struct{ field, value string }{
-		{"invoice_type", invoice.Type}, {"invoice_code", invoice.Code},
+		{"invoice_type", invoice.Type},
 		{"invoice_number", invoice.Number}, {"invoice_date", invoice.Date},
 		{"buyer_name", invoice.Buyer.Name}, {"buyer_tax_id", invoice.Buyer.Code},
 		{"seller_name", invoice.Seller.Name}, {"seller_tax_id", invoice.Seller.Code},
