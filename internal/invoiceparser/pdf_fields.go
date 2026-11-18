@@ -64,7 +64,6 @@ func extractHeaderFields(c *Candidate, lines []textLine) {
 				pattern *regexp.Regexp
 			}{
 				{"invoice_number", []string{"发票号码", "发票号", "票据号码"}, numberPattern},
-				{"invoice_code", []string{"发票代码"}, codePattern},
 				{"invoice_date", []string{"开票日期", "出票日期"}, datePattern},
 			} {
 				value, source := labelValue(line.Runs, i, spec.labels...)
@@ -75,10 +74,6 @@ func extractHeaderFields(c *Candidate, lines []textLine) {
 				for _, match := range matches {
 					if spec.field == "invoice_number" && (len(match) < 8 || len(match) > 20) {
 						addIssue(c, "INVOICE_NUMBER_FORMAT_REQUIRES_REVIEW")
-						continue
-					}
-					if spec.field == "invoice_code" && (len(match) < 10 || len(match) > 12) {
-						addIssue(c, "INVOICE_CODE_FORMAT_REQUIRES_REVIEW")
 						continue
 					}
 					normalized := match
