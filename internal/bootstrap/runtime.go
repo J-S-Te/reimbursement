@@ -205,16 +205,25 @@ func registerAuth(router *gin.Engine, auth *identity.OIDCAuthenticator, runtime 
 	router.GET("/auth/session", func(c *gin.Context) {
 		p, err := auth.Authenticate(c.Request.Context(), c.Request)
 		if err != nil {
-			status := 503
-			if errors.Is(err, identity.ErrUnauthenticated) {
-				status = 401
+			status, code := 503, "AUTHORIZATION_UNAVAILABLE"
+			if errors.Is(err, identity.ErrAuthorizationDenied) || errors.Is(err, identity.ErrInvalidAuthorization) {
+				status, code = 403, "AUTHORIZATION_DENIED"
+			} else if errors.Is(err, identity.ErrUnauthenticated) {
+				status, code = 401, "SESSION_EXPIRED"
 			}
-			c.JSON(status, gin.H{"code": "SESSION_EXPIRED", "message": "当前会话不可用"})
+			c.JSON(status, gin.H{"code": code, "message": "当前会话不可用"})
 			return
 		}
 		actor := p.Actor()
 		c.Header("Cache-Control", "no-store")
-		c.JSON(200, gin.H{"data": gin.H{"tenant_id": actor.TenantID, "subject_id": actor.SubjectID, "identity_id": actor.SubjectID, "user_id": actor.SubjectID, "display_name": p.DisplayName, "permissions": actor.Permissions, "roles": p.Roles, "authorization_revision": p.AuthorizationRevision, "catalog_version": p.CatalogVersion}})
+		c.JSON(200, gin.H{"data": gin.H{
+			"tenant_id": actor.TenantID, "subject_id": actor.SubjectID,
+			"identity_id": actor.SubjectID, "user_id": actor.SubjectID,
+			"display_name": p.DisplayName, "permissions": actor.Permissions,
+			"roles": p.Roles, "data_scopes": p.DataScopes,
+			"authorization_revision": p.AuthorizationRevision,
+			"catalog_version":        p.CatalogVersion,
+		}})
 	})
 	router.POST("/auth/activity", gin.WrapF(auth.Activity))
 }
