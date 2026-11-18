@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -177,18 +178,20 @@ func TestAuthorizationContextClientDecodesMetadata(t *testing.T) {
 }
 
 type fakeOIDCStore struct {
-	login       LoginTransaction
-	session     StoredOIDCSession
-	created     StoredOIDCSession
-	calls       int
-	revoked     bool
-	revokedAll  bool
-	updated     bool
-	seenTouched bool
-	touched     bool
-	touchErr    error
-	touchNow    time.Time
-	touchAt     time.Time
+	legacyRowMu   sync.Mutex
+	legacyStateMu sync.Mutex
+	login         LoginTransaction
+	session       StoredOIDCSession
+	created       StoredOIDCSession
+	calls         int
+	revoked       bool
+	revokedAll    bool
+	updated       bool
+	seenTouched   bool
+	touched       bool
+	touchErr      error
+	touchNow      time.Time
+	touchAt       time.Time
 }
 
 // SaveLoginTransaction 处理报销身份会话及受控协议边界。
@@ -214,25 +217,34 @@ func (s *fakeOIDCStore) CreateSession(_ context.Context, value StoredOIDCSession
 	return nil
 }
 
-// FindSession 处理报销身份会话及受控协议边界。
-// 参数：无。
-// 返回值：处理结果及校验、存储或依赖失败错误。
+// FindSession 读取并发安全的内存会话快照。
+// 参数：请求、Cookie摘要和时钟限定被测会话。
+// 返回值：活动会话副本或不存在错误。
 func (s *fakeOIDCStore) FindSession(context.Context, []byte, time.Time) (StoredOIDCSession, error) {
-	if s.revoked || s.revokedAll {
+	s.legacyStateMu.Lock()
+	defer s.legacyStateMu.Unlock()
+	if s.revoked || s.revokedAll || s.session.RevokedAt != nil {
 		return StoredOIDCSession{}, errOIDCRecordNotFound
 	}
 	return s.session, nil
 }
 
-// UpdateSession 处理报销身份会话及受控协议边界。
-// 参数：_为当前UpdateSession业务处理的受控输入；value为待校验或持久化的协议业务值；_为当前UpdateSession业务处理的受控输入。
-// 返回值：处理结果及校验、存储或依赖失败错误。
+// UpdateSession 原子保存认证器产生的完整内存快照。
+// 参数：请求与时钟提供调用边界，value为已复核会话。
+// 返回值：本地存储结果，无外部数据库操作。
 func (s *fakeOIDCStore) UpdateSession(_ context.Context, value StoredOIDCSession, _ time.Time) error {
+	s.legacyStateMu.Lock()
+	defer s.legacyStateMu.Unlock()
 	s.updated, s.session = true, value
 	return nil
 }
 
+// TouchSessionLastSeen 并发安全地推进观测时间。
+// 参数：请求与摘要定位会话，now为当前观测时间。
+// 返回值：本地更新时间的结果。
 func (s *fakeOIDCStore) TouchSessionLastSeen(_ context.Context, _ []byte, now time.Time) error {
+	s.legacyStateMu.Lock()
+	defer s.legacyStateMu.Unlock()
 	s.seenTouched = true
 	s.session.LastSeenAt = now
 	return nil
@@ -252,18 +264,22 @@ func (s *fakeOIDCStore) TouchSessionActivity(_ context.Context, _ []byte, now, i
 	return nil
 }
 
-// RevokeSession 处理报销身份会话及受控协议边界。
-// 参数：无。
-// 返回值：处理结果及校验、存储或依赖失败错误。
+// RevokeSession 使当前内存会话失效。
+// 参数：请求、Cookie摘要和时钟限定当前会话。
+// 返回值：本地撤销结果。
 func (s *fakeOIDCStore) RevokeSession(context.Context, []byte, time.Time) error {
+	s.legacyStateMu.Lock()
+	defer s.legacyStateMu.Unlock()
 	s.revoked = true
 	return nil
 }
 
-// RevokeSessionsForIdentity 处理报销身份会话及受控协议边界。
-// 参数：无。
-// 返回值：处理结果及校验、存储或依赖失败错误。
+// RevokeSessionsForIdentity 记录原身份范围的内存会话撤销。
+// 参数：请求、租户、身份和时钟限定原撤销策略。
+// 返回值：本地撤销结果。
 func (s *fakeOIDCStore) RevokeSessionsForIdentity(context.Context, string, string, time.Time) error {
+	s.legacyStateMu.Lock()
+	defer s.legacyStateMu.Unlock()
 	s.revokedAll = true
 	return nil
 }
