@@ -35,7 +35,7 @@ func parseQueryFilters(params map[string]string, kind string) (queryFilters, err
 		}
 		f.ExceptionOnly = value == "true"
 	}
-	for key, limit := range map[string]int{"q": 128, "applicant_subject_id": 128, "project_id": 64, "invoice_type": 64} {
+	for key, limit := range map[string]int{"claim_id": 128, "q": 128, "applicant_subject_id": 128, "project_id": 64, "invoice_type": 64} {
 		if utf8.RuneCountInString(params[key]) > limit {
 			return f, domain.Fail("INVALID_QUERY_FILTER", "查询字段过长："+key, 422)
 		}

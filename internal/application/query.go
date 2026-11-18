@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -337,6 +338,10 @@ func (s *Service) listTasks(db *gorm.DB, a domain.Actor, id string, params map[s
 	if id != "" {
 		q = q.Where("id = ?", id)
 	}
+	if claimID := strings.TrimSpace(params["claim_id"]); claimID != "" {
+		q = q.Where("claim_id = ?", claimID)
+	}
+
 	if filters.Status != "" {
 		q = q.Where("status = ?", filters.Status)
 	}

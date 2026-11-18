@@ -345,3 +345,42 @@ func TestQueryClaimStatusRejectsInvalidValues(t *testing.T) {
 		}
 	}
 }
+
+// TestApprovalNotificationClaimFilter 验证按单据定位待办仍限定本人及租户。
+// 参数：t 为独立内存数据库测试上下文。
+// 返回值：无；其他单据、受理人或租户任务出现在结果时失败。
+func TestApprovalNotificationClaimFilter(t *testing.T) {
+	s, db, _ := setupWorkflow(t)
+	actor := domain.Actor{TenantID: "t", SubjectID: "lead", Permissions: []string{"expense.approval.act", "expense.claim.read"}}
+	for _, id := range []string{"target", "other"} {
+		c := domain.Claim{ID: id, TenantID: "t", Applicant: "app", OrgID: "org", Status: "IN_APPROVAL", CurrentRound: 1}
+		seedQueryClaim(t, db, c, "")
+		snapshot, _ := json.Marshal(map[string]any{"claim": c})
+		if err := db.Create(&store.Snapshot{ID: "snapshot-" + id, TenantID: "t", ClaimID: id, Round: 1, ContentJSON: string(snapshot)}).Error; err != nil {
+			t.Fatal(err)
+		}
+		task := domain.Task{ID: "task-" + id, ClaimID: id, Round: 1, Assignee: "lead", Status: "PENDING", RequiredPermission: "expense.approval.act"}
+		raw, _ := json.Marshal(task)
+		if err := db.Create(&store.Task{ID: task.ID, TenantID: "t", ClaimID: id, Round: 1, Assignee: "lead", Status: "PENDING", ContentJSON: string(raw)}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	result := queryResultMap(t, s, actor, "approval-tasks", map[string]string{"claim_id": "target", "status": "PENDING"})
+	if result["total"] != float64(1) {
+		t.Fatalf("claim filter failed: %v", result)
+	}
+	items := result["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["claim_id"] != "target" {
+		t.Fatalf("unexpected items: %v", items)
+	}
+	actor.SubjectID = "unassigned"
+	result = queryResultMap(t, s, actor, "approval-tasks", map[string]string{"claim_id": "target"})
+	if result["total"] != float64(0) {
+		t.Fatalf("assignee widened: %v", result)
+	}
+	actor.TenantID = "other"
+	result = queryResultMap(t, s, actor, "approval-tasks", map[string]string{"claim_id": "target"})
+	if result["total"] != float64(0) {
+		t.Fatalf("tenant widened: %v", result)
+	}
+}

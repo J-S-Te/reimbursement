@@ -32,8 +32,12 @@ func TestNotificationKindsReachPlatform(t *testing.T) {
 			if err := p.Outbox(context.Background(), record); err != nil {
 				t.Fatal(err)
 			}
+			target := "/reimbursement/claims?claim_id=claim+%26+other"
+			if kind == "" {
+				target = "/reimbursement/approvals?claim_id=claim+%26+other"
+			}
 			if (*received)["event_type"] != "REIMBURSEMENT_"+suffix ||
-				(*received)["target_url"] != "/reimbursement/claims?claim_id=claim+%26+other" ||
+				(*received)["target_url"] != target ||
 				(*received)["idempotency_key"] != record.EventID || (*received)["reference_id"] != record.ResourceID {
 				t.Fatalf("incorrect platform event: %+v", *received)
 			}
@@ -130,5 +134,21 @@ func TestNumericNotificationPersistsMappedReceipt(t *testing.T) {
 	}
 	if !strings.Contains(receipt.ReceiptJSON, "REIMBURSEMENT_01H00000000000000000000000") {
 		t.Fatal("wire receipt lost")
+	}
+}
+
+// TestApprovalNotificationKeepsTaskTarget 验证新审批通知直达指定任务并保留单据绑定。
+// 参数：t 为隔离通知载荷测试上下文。
+// 返回值：无；任务坐标丢失、编码错误或普通通知被改为审批时失败。
+func TestApprovalNotificationKeepsTaskTarget(t *testing.T) {
+	for _, kind := range []string{"", "APPROVAL_REMINDER"} {
+		data := map[string]any{"kind": kind, "assignee_subject_id": "user", "claim_id": "claim/1", "task_id": "task/1"}
+		result, err := notificationPayload(Record{EventID: "EVENT", ResourceID: "claim/1"}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result["target_url"] != "/reimbursement/approvals?claim_id=claim%2F1&task_id=task%2F1" {
+			t.Fatalf("target=%v", result["target_url"])
+		}
 	}
 }

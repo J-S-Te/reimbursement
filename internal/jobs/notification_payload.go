@@ -45,10 +45,14 @@ func notificationPayload(row Record, data map[string]any) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
+	target, err := notificationTargetURL(kind, row.ResourceID, data)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"event_id": eventID, "event_type": eventType, "title": title, "content": content,
 		"notification_scope": "CROSS_SYSTEM", "priority": "NORMAL",
-		"target_url":     "/reimbursement/claims?" + url.Values{"claim_id": {row.ResourceID}}.Encode(),
+		"target_url":     target,
 		"reference_type": "reimbursement_claim", "reference_id": row.ResourceID,
 		"recipient_user_ids": []string{recipient}, "idempotency_key": row.EventID,
 		"occurred_at": row.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -77,4 +81,23 @@ func notificationKind(kind string) (string, string, string, error) {
 	default:
 		return "", "", "", errors.New("NOTIFICATION_KIND_UNSUPPORTED")
 	}
+}
+
+// notificationTargetURL 为审批类提醒保留任务坐标，其余事件进入单据详情。
+// 参数：kind 为冻结业务种类，claimID 为单据，data 为事务通知载荷。
+// 返回值：可重新授权的站内目标；非法任务标识返回错误。
+func notificationTargetURL(kind, claimID string, data map[string]any) (string, error) {
+	query := url.Values{"claim_id": {claimID}}
+	section := "claims"
+	if kind == "" || kind == "APPROVAL_REMINDER" {
+		section = "approvals"
+		if raw, exists := data["task_id"]; exists {
+			taskID, ok := raw.(string)
+			if !ok || strings.TrimSpace(taskID) == "" || len(taskID) > 128 {
+				return "", errors.New("INVALID_NOTIFICATION_TASK")
+			}
+			query.Set("task_id", taskID)
+		}
+	}
+	return "/reimbursement/" + section + "?" + query.Encode(), nil
 }
