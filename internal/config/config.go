@@ -11,14 +11,16 @@ import (
 )
 
 type Config struct {
-	CostMachine                                                                                                                      CostMachine
-	OwnerID, OwnerSecret                                                                                                             string
-	Address, DSN, PlatformURL, ProjectURL, FileURL, Environment, PublicURL                                                           string
-	Issuer, Backchannel, ClientID, ClientSecret, TenantID, RedirectURI, CookieName                                                   string
-	SessionKey                                                                                                                       []byte
-	Secure, Central                                                                                                                  bool
-	CentralSessionPublicURL                                                                                                          string
-	IdleTTL, AbsoluteTTL                                                                                                             time.Duration
+	CostMachine                                                                    CostMachine
+	OwnerID, OwnerSecret                                                           string
+	Address, DSN, PlatformURL, ProjectURL, FileURL, Environment, PublicURL         string
+	Issuer, Backchannel, ClientID, ClientSecret, TenantID, RedirectURI, CookieName string
+	SessionKey                                                                     []byte
+	Secure, Central                                                                bool
+	CentralSessionPublicURL                                                        string
+	IdleTTL, AbsoluteTTL                                                           time.Duration
+	// AuthorizationRefresh 是只读请求回源平台授权快照的最大间隔；写请求始终回源。
+	AuthorizationRefresh                                                                                                             time.Duration
 	ReferenceID, ReferenceSecret, SpendID, SpendSecret, FileID, FileSecret, AuditID, AuditSecret, NotificationID, NotificationSecret string
 	ApplicationID, CatalogID, CatalogSecret                                                                                          string
 }
@@ -54,6 +56,11 @@ func From(get func(string) string) (Config, error) {
 			return c, errors.New("missing runtime key: " + k)
 		}
 	}
+	refresh, refreshErr := time.ParseDuration(value(get, "OIDC_AUTHORIZATION_REFRESH_INTERVAL", "10s"))
+	if refreshErr != nil || refresh <= 0 || refresh >= c.AbsoluteTTL {
+		return c, errors.New("invalid OIDC_AUTHORIZATION_REFRESH_INTERVAL")
+	}
+	c.AuthorizationRefresh = refresh
 	var err error
 	c.SessionKey, err = base64.StdEncoding.DecodeString(get("OIDC_SESSION_ENCRYPTION_KEY_BASE64"))
 	if err != nil || len(c.SessionKey) != 32 {

@@ -25,7 +25,7 @@ func oidcOptions(cfg config.Config) identity.OIDCOptions {
 		EnvironmentCode: cfg.Environment, SessionCookieName: cfg.CookieName,
 		PathPrefix: "/reimbursement", SessionSecure: cfg.Secure,
 		SessionIdleTTL: cfg.IdleTTL, SessionAbsoluteTTL: cfg.AbsoluteTTL,
-		AuthorizationRefreshInterval: time.Minute, AuthorizationMaxStale: time.Minute,
+		AuthorizationRefreshInterval: cfg.AuthorizationRefresh, AuthorizationMaxStale: time.Minute,
 		AuthorizationTimeout: 8 * time.Second, CentralSessionEnabled: cfg.Central,
 		CentralSessionPublicBaseURL: cfg.CentralSessionPublicURL,
 	}

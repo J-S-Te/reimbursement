@@ -94,7 +94,7 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	github.com/zc310/ofd v0.1.9-0.20261031131342-b4255b7d5424
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/text v0.43.0
 )
 
 replace github.com/J-S-Te/license-core => ./third_party/license-core

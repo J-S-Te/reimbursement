@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"testing"
+	"time"
 )
 
 // loginRuntimeFixture 用途：提供不连接外部服务的完整合成登录配置。
@@ -61,6 +62,33 @@ func TestCentralPublicOrigin(t *testing.T) {
 				t.Fatalf("central origin=%q error=%v", cfg.CentralSessionPublicURL, err)
 			}
 		})
+	}
+}
+
+// TestAuthorizationRefresh 用途：默认 10 秒、显式值生效、非法值失败关闭。
+// 参数：t 为隔离配置测试上下文。
+// 返回值：无；默认或校验行为不符时失败。
+func TestAuthorizationRefresh(t *testing.T) {
+	values := loginRuntimeFixture()
+	cfg, err := From(func(key string) string { return values[key] })
+	if err != nil {
+		t.Fatalf("From() error = %v", err)
+	}
+	if cfg.AuthorizationRefresh != 10*time.Second {
+		t.Fatalf("AuthorizationRefresh = %v, want 10s", cfg.AuthorizationRefresh)
+	}
+
+	values["OIDC_AUTHORIZATION_REFRESH_INTERVAL"] = "3s"
+	cfg, err = From(func(key string) string { return values[key] })
+	if err != nil || cfg.AuthorizationRefresh != 3*time.Second {
+		t.Fatalf("AuthorizationRefresh = %v error = %v, want 3s", cfg.AuthorizationRefresh, err)
+	}
+
+	for _, raw := range []string{"0s", "nonsense", "8h"} {
+		values["OIDC_AUTHORIZATION_REFRESH_INTERVAL"] = raw
+		if _, err := From(func(key string) string { return values[key] }); err == nil {
+			t.Fatalf("OIDC_AUTHORIZATION_REFRESH_INTERVAL=%q accepted", raw)
+		}
 	}
 }
 
