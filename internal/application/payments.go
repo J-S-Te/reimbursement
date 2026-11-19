@@ -419,7 +419,16 @@ func (s *Service) reversePayment(tx *gorm.DB, cc *commandContext, payload json.R
 		return nil, "", e
 	}
 	e = tx.Model(&store.ReversalRequest{}).Where("id = ? AND version = ?", request.ID, request.Version).Updates(map[string]any{"status": data.Status, "version": data.Version, "content_json": raw}).Error
-	return data, c.ID, e
+	if e != nil {
+		return nil, "", e
+	}
+	if e = appendOutbox(tx, c.TenantID, "notification", c.ID, map[string]any{
+		"kind": "REVERSAL_" + data.Status, "claim_id": c.ID,
+		"assignee_subject_id": request.Requester, "requester_subject_id": request.Requester,
+	}); e != nil {
+		return nil, "", e
+	}
+	return data, c.ID, nil
 }
 
 // createArchiveJob 分配独立档案版本并冻结真实财务版本、当时文档和不可变历史引用。

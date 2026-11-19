@@ -19,14 +19,14 @@ import (
 // 参数：t 为通知协议测试上下文。
 // 返回值：无；误分类、越界链接或受理回执未保存时失败。
 func TestNotificationKindsReachPlatform(t *testing.T) {
-	for _, suffix := range []string{"APPROVAL_ASSIGNED", "INVOICE_MISMATCH",
+	for _, suffix := range []string{"APPROVAL_ASSIGNED", "APPROVAL_APPROVED", "APPROVAL_RETURNED", "REVERSAL_APPROVED", "REVERSAL_REJECTED", "INVOICE_MISMATCH",
 		"INVOICE_CORRECTION_REQUESTED", "INVOICE_RECONFIRM_REQUIRED", "INVOICE_FINANCE_REVIEW_REQUIRED"} {
 		t.Run(suffix, func(t *testing.T) {
 			kind := suffix
 			if kind == "APPROVAL_ASSIGNED" {
 				kind = ""
 			}
-			data := map[string]any{"kind": kind, "assignee_subject_id": "user", "claim_id": "claim & other"}
+			data := map[string]any{"kind": kind, "assignee_subject_id": "user", "claim_id": "claim & other", "applicant_subject_id": "user", "requester_subject_id": "user"}
 			payload, _ := json.Marshal(data)
 			p, record, db, received := notificationDeliveryFixture(t, string(payload))
 			if err := p.Outbox(context.Background(), record); err != nil {

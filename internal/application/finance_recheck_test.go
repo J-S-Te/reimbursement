@@ -579,3 +579,40 @@ func TestFinanceRecheckTwoAccountantsHaveOneFinalDecision(t *testing.T) {
 		t.Fatalf("退回通知须仅一份: %d", returned)
 	}
 }
+
+// TestApprovalOutcomesOnlyNotifyClaimApplicant 验证终审结果投递给申请人且关闭审批任务。
+// 参数：t 为临时 SQLite 工作流测试上下文。
+// 返回值：无；收件人、消息种类或任务终态不正确时失败。
+func TestApprovalOutcomesOnlyNotifyClaimApplicant(t *testing.T) {
+	for action, expected := range map[string]string{"APPROVE": "APPROVAL_APPROVED", "RETURN": "APPROVAL_RETURNED"} {
+		t.Run(action, func(t *testing.T) {
+			s, db, actor, task := financeFixture(t)
+			body := financeBody(task)
+			body["action"], body["reason"] = action, "隔离验收"
+			reply := runCommand(t, s, actor, "approval.action", task.ID, body)
+			runCommand(t, s, actor, "approval.action", task.ID, body)
+			var rows []store.Outbox
+			if err := db.Where("topic = ? AND resource_id = ?", "notification", task.ClaimID).Find(&rows).Error; err != nil {
+				t.Fatal(err)
+			}
+			outcomes := 0
+			for _, row := range rows {
+				var event map[string]any
+				if err := json.Unmarshal([]byte(row.PayloadJSON), &event); err != nil {
+					t.Fatal(err)
+				}
+				if event["kind"] == expected {
+					outcomes++
+					if event["assignee_subject_id"] != "app" || event["task_id"] != nil {
+						t.Fatalf("结果被视为审批任务或收件人错误: %+v", event)
+					}
+				}
+			}
+			var pending int64
+			err := db.Model(&store.Task{}).Where("claim_id = ? AND status = ?", task.ClaimID, "PENDING").Count(&pending).Error
+			if outcomes != 1 || pending != 0 || err != nil {
+				t.Fatalf("结果通知=%d，待办=%d，回执=%+v，错误=%v", outcomes, pending, reply, err)
+			}
+		})
+	}
+}

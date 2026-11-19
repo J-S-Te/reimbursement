@@ -32,9 +32,14 @@ func notificationPayload(row Record, data map[string]any) (map[string]any, error
 	if data["kind"] != nil && !ok {
 		return nil, errors.New("NOTIFICATION_KIND_UNSUPPORTED")
 	}
-	if kind == "FINANCE_COMPLIANCE_RETURNED" {
+	if kind == "FINANCE_COMPLIANCE_RETURNED" || kind == "APPROVAL_APPROVED" || kind == "APPROVAL_RETURNED" {
 		applicant, valid := data["applicant_subject_id"].(string)
 		if !valid || strings.TrimSpace(applicant) == "" || recipient != applicant {
+			return nil, errors.New("NOTIFICATION_RECIPIENT_INVALID")
+		}
+	}
+	if kind == "REVERSAL_APPROVED" || kind == "REVERSAL_REJECTED" {
+		if requester, valid := data["requester_subject_id"].(string); !valid || recipient != requester {
 			return nil, errors.New("NOTIFICATION_RECIPIENT_INVALID")
 		}
 	}
@@ -68,6 +73,14 @@ func notificationKind(kind string) (string, string, string, error) {
 		return "REIMBURSEMENT_APPROVAL_ASSIGNED", "报销审批待办", "您有一项报销审批任务，请进入审批中心核验。", nil
 	case "APPROVAL_REMINDER":
 		return "REIMBURSEMENT_APPROVAL_REMINDER", "报销审批超期提醒", "您有一项超期审批任务，请进入审批中心核验当前待办。", nil
+	case "APPROVAL_APPROVED":
+		return "REIMBURSEMENT_APPROVAL_APPROVED", "报销申请已通过", "报销申请已通过审批，可查看单据详情。", nil
+	case "APPROVAL_RETURNED":
+		return "REIMBURSEMENT_APPROVAL_RETURNED", "报销申请已退回", "报销申请已退回，请查看审批意见。", nil
+	case "REVERSAL_APPROVED":
+		return "REIMBURSEMENT_REVERSAL_APPROVED", "付款冲正申请已通过", "请查看报销单的付款记录。", nil
+	case "REVERSAL_REJECTED":
+		return "REIMBURSEMENT_REVERSAL_REJECTED", "付款冲正申请已驳回", "请查看报销单的付款记录。", nil
 	case "FINANCE_COMPLIANCE_RETURNED":
 		return "REIMBURSEMENT_FINANCE_COMPLIANCE_RETURNED", "报销财务复检退回", "会计节点复检未通过，单据已退回；请查看具体原因并处理后重新提交。", nil
 	case "INVOICE_MISMATCH":

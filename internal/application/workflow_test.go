@@ -215,6 +215,26 @@ func TestPaymentReversalReplayKeepsRepaymentSlot(t *testing.T) {
 	body["transaction_no"] = "txn2"
 	repaid := runCommand(t, s, cashier, "payment.record", claimID, body)
 	runCommand(t, s, director, "reversal.decide", request["id"].(string), decision)
+	var notices []store.Outbox
+	if err := db.Where("topic = ? AND resource_id = ?", "notification", claimID).Find(&notices).Error; err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, item := range notices {
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(item.PayloadJSON), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["kind"] == "REVERSAL_APPROVED" {
+			n++
+			if payload["assignee_subject_id"] != cashier.SubjectID || payload["task_id"] != nil {
+				t.Fatalf("冲正结果收件人或类型错误: %+v", payload)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("冲正结果通知数量=%d，预期1", n)
+	}
 	c, _, err := loadClaim(db, "t", claimID, false)
 	if err != nil {
 		t.Fatal(err)

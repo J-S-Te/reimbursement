@@ -187,8 +187,9 @@ func (s *Service) approval(tx *gorm.DB, cc *commandContext, payload json.RawMess
 			if e = releaseInvoices(tx, c); e != nil {
 				return nil, "", e
 			}
+		} else if e = notifyClaimApprovalOutcome(tx, c, "APPROVAL_RETURNED"); e != nil {
+			return nil, "", e
 		}
-
 	} else if input.Action == "APPROVE" {
 		if e = advanceNode(tx, &c, task.Node); e != nil {
 			return nil, "", e
@@ -229,7 +230,7 @@ func advanceNode(tx *gorm.DB, c *domain.Claim, node int) error {
 	}
 	if len(next) == 0 {
 		c.Status = "APPROVED_PENDING_PAYMENT"
-		return nil
+		return notifyClaimApprovalOutcome(tx, *c, "APPROVAL_APPROVED")
 	}
 	for _, task := range next {
 		if e := tx.Model(&store.Task{}).Where("id = ? AND status = ?", task.ID, "WAITING").Updates(map[string]any{"status": "PENDING", "version": gorm.Expr("version + 1")}).Error; e != nil {
@@ -240,4 +241,14 @@ func advanceNode(tx *gorm.DB, c *domain.Claim, node int) error {
 		}
 	}
 	return nil
+}
+
+// notifyClaimApprovalOutcome 在同一业务事务中投递给报销申请人的终审结果。
+// 参数：tx 为审批事务，claim 为归属单据，kind 为通过或退回事件。
+// 返回值：通知持久化错误，成功时为 nil。
+func notifyClaimApprovalOutcome(tx *gorm.DB, claim domain.Claim, kind string) error {
+	return appendOutbox(tx, claim.TenantID, "notification", claim.ID, map[string]any{
+		"kind": kind, "claim_id": claim.ID, "round": claim.CurrentRound,
+		"assignee_subject_id": claim.Applicant, "applicant_subject_id": claim.Applicant,
+	})
 }
