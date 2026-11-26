@@ -20,6 +20,9 @@ func enrichClaimQueryView(db *gorm.DB, a domain.Actor, c domain.Claim, value any
 		return value, nil
 	}
 	view["applicant_subject_id"], view["org_id"] = c.Applicant, c.OrgID
+	if c.ApplicantName != "" {
+		view["applicant_name"] = c.ApplicantName
+	}
 	view["created_at"] = c.CreatedAt
 	if _, exists := view["claim_type"]; !exists {
 		raw, e := json.Marshal(c)
