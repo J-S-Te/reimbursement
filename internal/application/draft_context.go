@@ -16,6 +16,7 @@ type applicantDirectory interface {
 
 type draftAppointmentProof struct {
 	TenantID, SubjectID, OrgID, RouteType, ProfileID, CommandHash string
+	ApplicantName                                                 string
 	ProfileVersion                                                int64
 	VerifiedAt                                                    time.Time
 }
@@ -50,6 +51,7 @@ func (s *Service) preflightDraftAppointment(ctx context.Context, db *gorm.DB, cc
 	proof := &draftAppointmentProof{
 		TenantID: cc.actor.TenantID, SubjectID: cc.actor.SubjectID, OrgID: c.OrgID,
 		CommandHash: cc.hash, VerifiedAt: time.Now().UTC(),
+		ApplicantName: strings.TrimSpace(person.Name),
 	}
 	// 未填写组织的未完成草稿仍可暂存；提交与所有已填组织必须具有当前任职。
 	if c.OrgID == "" && cc.operation != "claim.submit" {

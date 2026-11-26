@@ -136,6 +136,7 @@ type Claim struct {
 	ClaimNo               string                    `json:"claim_no"`
 	Title                 string                    `json:"title"`
 	Applicant             string                    `json:"applicant_subject_id"`
+	ApplicantName         string                    `json:"applicant_name,omitempty"`
 	OrgID                 string                    `json:"org_id"`
 	RouteType             string                    `json:"route_type"`
 	Status                string                    `json:"status"`

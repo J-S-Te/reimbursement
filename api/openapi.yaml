@@ -10989,6 +10989,12 @@
           "applicant_subject_id": {
             "type": "string"
           },
+          "applicant_name": {
+            "type": "string",
+            "readOnly": true,
+            "description": "服务端核验并保存的申请人姓名。审批任务的 snapshot 使用对应轮次的冻结姓名，旧记录可能省略。",
+            "maxLength": 200
+          },
           "org_id": {
             "type": "string"
           },

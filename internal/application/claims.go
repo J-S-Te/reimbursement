@@ -266,6 +266,9 @@ func (s *Service) editClaim(tx *gorm.DB, cc *commandContext, payload json.RawMes
 	if e = verifyDraftAppointment(tx, cc, c); e != nil {
 		return nil, "", e
 	}
+	if cc.appointment.ApplicantName != "" {
+		c.ApplicantName = cc.appointment.ApplicantName
+	}
 	if e = rebuildDraftClassificationEvidence(tx, &c); e != nil {
 		return nil, "", e
 	}

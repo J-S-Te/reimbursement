@@ -77,6 +77,9 @@ func (s *Service) submit(tx *gorm.DB, cc *commandContext) (any, string, error) {
 	if e = verifyDraftAppointment(tx, cc, c); e != nil {
 		return nil, "", e
 	}
+	if cc.appointment.ApplicantName != "" {
+		c.ApplicantName = cc.appointment.ApplicantName
+	}
 	if e = bindSubmissionQualifications(tx, cc, c, &plan); e != nil {
 		return nil, "", e
 	}
@@ -565,6 +568,8 @@ func approvedContentHash(c domain.Claim, plan approvalPlan, invoices []domain.In
 	c.Version = 0
 	c.ContentHash = ""
 	c.ActivePaymentID = ""
+	// 业务摘要保留申请人身份，展示姓名不影响旧版本归档与付款复核。
+	c.ApplicantName = ""
 	c.ProjectionRevision = 0
 	c.CreatedAt = time.Time{}
 	c.UpdatedAt = time.Time{}
